@@ -1,37 +1,23 @@
 # main.py
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from motor.motor_asyncio import AsyncIOMotorClient
+from fastapi import FastAPI
+import uvicorn
 
-import jwt
-from passlib.context import CryptContext
-import os
-from dotenv import load_dotenv
-from pymongo import ReturnDocument
+from db.db import init_db, close_db_connection
+from routes.routes import setup_routes
+from logger.logger import logger
 
-# Import routers
-from routes import setup_routes
+# Try to import config - if any required configs are missing, 
+# the app will exit before starting
+try:
+    import config
+except Exception as e:
+    logger.critical(f"Failed to load configuration: {e}")
+    import sys
+    sys.exit(1)
 
-
-# Load environment variables
-load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(title="Content Management System API")
-
-# TODO: move to a db folder
-# Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "mongodb://localhost:27017")
-client = AsyncIOMotorClient(DATABASE_URL)
-db = client.cms_database
-
-# Security
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Setup routes
 setup_routes(app)
@@ -39,13 +25,14 @@ setup_routes(app)
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_db_client():
-    app.mongodb_client = AsyncIOMotorClient(DATABASE_URL)
-    app.mongodb = app.mongodb_client.get_database("cms_database")
+     # Validation can be done here too if needed
+    logger.info("Starting up application")
+    await init_db()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    app.mongodb_client.close()
+    logger.info("Shutting down application")
+    await close_db_connection()
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

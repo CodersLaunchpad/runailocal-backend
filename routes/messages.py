@@ -1,8 +1,18 @@
-# Message routes
-@app.post("/messages/", response_model=MessageInDB)
+from fastapi import APIRouter, HTTPException, Response, status, Depends
+from datetime import datetime
+from models.models import PyObjectId, MessageCreate, MessageInDB, UserInDB
+from helpers.auth import get_current_active_user
+from typing import List
+from pymongo import ReturnDocument
+from db.db import get_db
+
+router = APIRouter()
+
+@router.post("/", response_model=MessageInDB)
 async def send_message(
     message: MessageCreate,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         recipient_id = PyObjectId(message.recipient_id)
@@ -18,7 +28,7 @@ async def send_message(
             "recipient_id": recipient_id,
             "text": message.text,
             "read": False,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(datetime.timezone.utc)
         }
         
         # Insert message
@@ -30,10 +40,11 @@ async def send_message(
     except:
         raise HTTPException(status_code=400, detail="Invalid recipient ID")
 
-@app.get("/messages/", response_model=List[MessageInDB])
+@router.get("/", response_model=List[MessageInDB])
 async def get_messages(
     sent: bool = False,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     if sent:
         query = {"sender_id": current_user.id}
@@ -44,14 +55,15 @@ async def get_messages(
     cursor = db.messages.find(query).sort("created_at", -1)
     
     async for document in cursor:
-        messages.append(document)
+        messages.routerend(document)
     
     return messages
 
-@app.get("/messages/{message_id}", response_model=MessageInDB)
+@router.get("/{message_id}", response_model=MessageInDB)
 async def get_message(
     message_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(message_id)
@@ -81,10 +93,11 @@ async def get_message(
     except:
         raise HTTPException(status_code=400, detail="Invalid message ID")
 
-@app.delete("/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_message(
     message_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(message_id)

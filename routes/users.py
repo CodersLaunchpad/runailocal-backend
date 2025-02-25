@@ -1,19 +1,16 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime
 from typing import List
-from models import PyObjectId
+from models.models import PyObjectId, UserCreate, UserInDB, ArticleInDB, UserUpdate
+from helpers.auth import get_password_hash, get_current_active_user, get_admin_user
+from db.db import get_db
+from pymongo import ReturnDocument
 
-# Import your models, database, and utility functions
-# (Assuming these are defined elsewhere in your project)
-from models import UserCreate, UserInDB, ArticleInDB
-from helpers import get_db, get_current_user, get_password_hash, get_current_active_user, get_admin_user
-
-# Create router instance
-app = APIRouter()
+router = APIRouter()
 
 # User routes
-@app.post("/users/", response_model=UserInDB)
-async def create_user(user: UserCreate):
+@router.post("/", response_model=UserInDB)
+async def create_user(user: UserCreate, db = Depends(get_db)):
     # Check if username already exists
     existing_user = await db.users.find_one({"username": user.username})
     if existing_user:
@@ -34,13 +31,13 @@ async def create_user(user: UserCreate):
     hashed_password = get_password_hash(user.password)
     user_dict = user.dict(exclude={"password"})
     user_dict["password_hash"] = hashed_password
-    user_dict["created_at"] = datetime.utcnow()
+    user_dict["created_at"] = datetime.now(datetime.timezone.utc)
     
     # Set user details based on type
     if user.user_type == "normal":
         user_dict["user_details"] = {
             "type": "normal",
-            "signup_date": datetime.utcnow(),
+            "signup_date": datetime.now(datetime.timezone.utc),
             "email_notifications": True,
             "reading_preferences": []
         }
@@ -56,7 +53,7 @@ async def create_user(user: UserCreate):
         # Only existing admins can create new admins, otherwise default to normal user
         user_dict["user_details"] = {
             "type": "normal",
-            "signup_date": datetime.utcnow(),
+            "signup_date": datetime.now(datetime.timezone.utc),
             "email_notifications": True
         }
     
@@ -70,29 +67,30 @@ async def create_user(user: UserCreate):
     created_user = await db.users.find_one({"_id": result.inserted_id})
     return created_user
 
-@app.get("/users/me", response_model=UserInDB)
+@router.get("/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     return current_user
 
-# rename to get_user_favorites
-@app.get("/users/me/favorites", response_model=List[ArticleInDB])
+# TODO: rename to get_user_favorites
+@router.get("/me/favorites", response_model=List[ArticleInDB])
 async def get_favorites(
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     favorite_articles = []
     
     for article_id in current_user.favorites:
         article = await db.articles.find_one({"_id": article_id})
         if article and article.get("published_at"):
-            favorite_articles.append(article)
+            favorite_articles.routerend(article)
     
     return favorite_articles
 
-
-@app.put("/users/me", response_model=UserInDB)
+@router.put("/me", response_model=UserInDB)
 async def update_user(
     user_update: UserUpdate,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     update_data = {k: v for k, v in user_update.dict(exclude_unset=True).items() if v is not None}
     
@@ -107,10 +105,11 @@ async def update_user(
     
     return current_user
 
-@app.get("/users/{user_id}", response_model=UserInDB)
+@router.get("/{user_id}", response_model=UserInDB)
 async def get_user_by_id(
     user_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(user_id)
@@ -121,11 +120,12 @@ async def get_user_by_id(
     except:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
-@app.put("/users/{user_id}", response_model=UserInDB)
+@router.put("/{user_id}", response_model=UserInDB)
 async def admin_update_user(
     user_id: str,
     user_update: UserUpdate,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(user_id)
@@ -144,10 +144,11 @@ async def admin_update_user(
     except:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
-@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: str,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(user_id)
@@ -171,10 +172,11 @@ async def delete_user(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     
 # Following authors
-@app.post("/users/follow/{author_id}", status_code=status.HTTP_200_OK)
+@router.post("/follow/{author_id}", status_code=status.HTTP_200_OK)
 async def follow_author(
     author_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(author_id)
@@ -196,10 +198,11 @@ async def follow_author(
     except:
         raise HTTPException(status_code=400, detail="Invalid author ID")
 
-@app.post("/users/unfollow/{author_id}", status_code=status.HTTP_200_OK)
+@router.post("/unfollow/{author_id}", status_code=status.HTTP_200_OK)
 async def unfollow_author(
     author_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(author_id)
@@ -214,15 +217,16 @@ async def unfollow_author(
     except:
         raise HTTPException(status_code=400, detail="Invalid author ID")
 
-@app.get("/users/me/following", response_model=List[UserInDB])
+@router.get("/me/following", response_model=List[UserInDB])
 async def get_following(
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     following_users = []
     
     for author_id in current_user.following:
         author = await db.users.find_one({"_id": author_id})
         if author:
-            following_users.append(author)
+            following_users.routerend(author)
     
     return following_users

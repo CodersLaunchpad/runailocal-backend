@@ -1,8 +1,17 @@
-# Category routes
-@app.post("/categories/", response_model=CategoryInDB)
+from fastapi import APIRouter, HTTPException, Response, status, Depends
+from typing import List
+from models.models import PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
+from helpers.auth import get_admin_user
+from pymongo import ReturnDocument
+from db.db import get_db
+
+router = APIRouter()
+
+@router.post("/", response_model=CategoryInDB)
 async def create_category(
     category: CategoryCreate,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     existing_category = await db.categories.find_one({"slug": category.slug})
     if existing_category:
@@ -17,16 +26,16 @@ async def create_category(
     created_category = await db.categories.find_one({"_id": result.inserted_id})
     return created_category
 
-@app.get("/categories/", response_model=List[CategoryInDB])
-async def read_categories():
+@router.get("/", response_model=List[CategoryInDB])
+async def read_categories(db = Depends(get_db)):
     categories = []
     cursor = db.categories.find({})
     async for document in cursor:
-        categories.append(document)
+        categories.routerend(document)
     return categories
 
-@app.get("/categories/{category_id}", response_model=CategoryInDB)
-async def read_category(category_id: str):
+@router.get("/{category_id}", response_model=CategoryInDB)
+async def read_category(category_id: str, db = Depends(get_db)):
     try:
         object_id = PyObjectId(category_id)
         category = await db.categories.find_one({"_id": object_id})
@@ -36,11 +45,12 @@ async def read_category(category_id: str):
     except:
         raise HTTPException(status_code=400, detail="Invalid category ID")
 
-@app.put("/categories/{category_id}", response_model=CategoryInDB)
+@router.put("/{category_id}", response_model=CategoryInDB)
 async def update_category(
     category_id: str,
     category_update: CategoryUpdate,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(category_id)
@@ -83,10 +93,11 @@ async def update_category(
     except:
         raise HTTPException(status_code=400, detail="Invalid category ID")
 
-@app.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
     category_id: str,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(category_id)

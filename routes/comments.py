@@ -1,8 +1,17 @@
-# Comment routes
-@app.post("/comments/", response_model=CommentInDB)
+from fastapi import APIRouter, HTTPException, Response, status, Depends
+from datetime import datetime
+from models.models import PyObjectId, UserInDB, CommentInDB, CommentCreate
+from helpers.auth import get_current_active_user
+from pymongo import ReturnDocument
+from db.db import get_db
+
+router = APIRouter()
+
+@router.post("/", response_model=CommentInDB)
 async def create_comment(
     comment: CommentCreate,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(comment.article_id)
@@ -19,7 +28,7 @@ async def create_comment(
             "user_id": current_user.id,
             "username": current_user.username,
             "user_type": current_user.user_details.get("type", "normal"),
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(datetime.timezone.utc)
         }
         
         # Add comment to article
@@ -37,12 +46,13 @@ async def create_comment(
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
 
-@app.put("/comments/{article_id}/{comment_id}", response_model=CommentInDB)
+@router.put("/{article_id}/{comment_id}", response_model=CommentInDB)
 async def update_comment(
     article_id: str,
     comment_id: str,
     text: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         article_object_id = PyObjectId(article_id)
@@ -79,7 +89,7 @@ async def update_comment(
             {
                 "$set": {
                     "comments.$.text": text,
-                    "comments.$.updated_at": datetime.utcnow()
+                    "comments.$.updated_at": datetime.now(datetime.timezone.utc)
                 }
             },
             return_document=ReturnDocument.AFTER
@@ -99,11 +109,12 @@ async def update_comment(
     except:
         raise HTTPException(status_code=400, detail="Invalid article or comment ID")
 
-@app.delete("/comments/{article_id}/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{article_id}/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_comment(
     article_id: str,
     comment_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         article_object_id = PyObjectId(article_id)

@@ -1,8 +1,20 @@
-# Article routes
-@app.post("/articles/", response_model=ArticleInDB)
+import os
+import uuid
+from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, Depends, UploadFile
+from datetime import datetime
+from typing import List, Optional
+from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate
+from helpers.auth import get_current_active_user, get_admin_user, get_author_user
+from pymongo import ReturnDocument
+from db.db import get_db
+
+router = APIRouter()
+
+@router.post("/", response_model=ArticleInDB)
 async def create_article(
     article: ArticleCreate = Body(...),
-    current_user: UserInDB = Depends(get_author_user)
+    current_user: UserInDB = Depends(get_author_user),
+    db = Depends(get_db)
 ):
     # Check if category exists
     category_id = article.category.get("_id")
@@ -35,13 +47,13 @@ async def create_article(
     
     # Add author info
     article_dict["author_id"] = current_user.id
-    article_dict["created_at"] = datetime.utcnow()
+    article_dict["created_at"] = datetime.now(datetime.timezone.utc)
     article_dict["images"] = []
     article_dict["comments"] = []
     
     # If user is admin, article can be published immediately
     if current_user.user_details.get("type") == "admin":
-        article_dict["published_at"] = datetime.utcnow()
+        article_dict["published_at"] = datetime.now(datetime.timezone.utc)
     
     # Insert into database
     result = await db.articles.insert_one(article_dict)
@@ -56,7 +68,7 @@ async def create_article(
     created_article = await db.articles.find_one({"_id": result.inserted_id})
     return created_article
 
-@app.get("/articles/", response_model=List[ArticleInDB])
+@router.get("/", response_model=List[ArticleInDB])
 async def read_articles(
     category: Optional[str] = None,
     author: Optional[str] = None,
@@ -64,7 +76,8 @@ async def read_articles(
     featured: Optional[bool] = None,
     published_only: bool = True,
     skip: int = 0,
-    limit: int = 20
+    limit: int = 20,
+    db = Depends(get_db)
 ):
     query = {}
     
@@ -101,12 +114,12 @@ async def read_articles(
     cursor = db.articles.find(query).skip(skip).limit(limit).sort("created_at", -1)
     
     async for document in cursor:
-        articles.append(document)
+        articles.routerend(document)
     
     return articles
 
-@app.get("/articles/{article_id}", response_model=ArticleInDB)
-async def read_article(article_id: str):
+@router.get("/{article_id}", response_model=ArticleInDB)
+async def read_article(article_id: str, db = Depends(get_db)):
     try:
         object_id = PyObjectId(article_id)
         article = await db.articles.find_one({"_id": object_id})
@@ -132,11 +145,12 @@ async def read_article(article_id: str):
         
         raise HTTPException(status_code=404, detail="Article not found")
 
-@app.put("/articles/{article_id}", response_model=ArticleInDB)
+@router.put("/{article_id}", response_model=ArticleInDB)
 async def update_article(
     article_id: str,
     article_update: ArticleUpdate,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -184,7 +198,7 @@ async def update_article(
                 raise HTTPException(status_code=400, detail="Invalid category ID")
         
         update_data = {k: v for k, v in article_update.dict(exclude_unset=True).items() if v is not None}
-        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_at"] = datetime.now(datetime.timezone.utc)
         
         if update_data:
             updated_article = await db.articles.find_one_and_update(
@@ -200,10 +214,11 @@ async def update_article(
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
 
-@app.delete("/articles/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_article(
     article_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -242,14 +257,15 @@ async def delete_article(
         raise HTTPException(status_code=400, detail="Invalid article ID")
     
 # Upload article image
-@app.post("/articles/{article_id}/images", response_model=ArticleInDB)
+@router.post("/{article_id}/images", response_model=ArticleInDB)
 async def upload_article_image(
     article_id: str,
     file: UploadFile = File(...),
     is_main: bool = Form(False),
     is_thumbnail: bool = Form(False),
     caption: Optional[str] = Form(None),
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -305,11 +321,12 @@ async def upload_article_image(
         raise HTTPException(status_code=400, detail="Invalid article ID or file")
 
 # Delete article image
-@app.delete("/articles/{article_id}/images/{image_index}", response_model=ArticleInDB)
+@router.delete("/{article_id}/images/{image_index}", response_model=ArticleInDB)
 async def delete_article_image(
     article_id: str,
     image_index: int,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -345,10 +362,11 @@ async def delete_article_image(
         raise HTTPException(status_code=400, detail="Invalid article ID or image index")
 
 # Favorite articles
-@app.post("/articles/{article_id}/favorite", status_code=status.HTTP_200_OK)
+@router.post("/{article_id}/favorite", status_code=status.HTTP_200_OK)
 async def favorite_article(
     article_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -370,10 +388,11 @@ async def favorite_article(
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
 
-@app.post("/articles/{article_id}/unfavorite", status_code=status.HTTP_200_OK)
+@router.post("/{article_id}/unfavorite", status_code=status.HTTP_200_OK)
 async def unfavorite_article(
     article_id: str,
-    current_user: UserInDB = Depends(get_current_active_user)
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
@@ -388,19 +407,20 @@ async def unfavorite_article(
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
 
-# Admin approval of articles
-@app.post("/articles/{article_id}/approve", response_model=ArticleInDB)
-async def approve_article(
+# Admin routerroval of articles
+@router.post("/{article_id}/routerrove", response_model=ArticleInDB)
+async def routerrove_article(
     article_id: str,
-    current_user: UserInDB = Depends(get_admin_user)
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
 ):
     try:
         object_id = PyObjectId(article_id)
         
-        # Approve article by setting published date
+        # routerrove article by setting published date
         updated_article = await db.articles.find_one_and_update(
             {"_id": object_id, "published_at": None},
-            {"$set": {"published_at": datetime.utcnow()}},
+            {"$set": {"published_at": datetime.now(datetime.timezone.utc)}},
             return_document=ReturnDocument.AFTER
         )
         
