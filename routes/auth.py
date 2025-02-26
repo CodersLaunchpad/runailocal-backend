@@ -23,7 +23,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     # Update last login time
     await db.users.update_one(
         {"_id": user.id}, 
-        {"$set": {"last_login": datetime.now(datetime.timezone.utc)}}
+        {"$set": {"last_login": datetime.now(timezone.utc)}}
     )
     
     access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)

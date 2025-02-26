@@ -28,7 +28,7 @@ async def create_comment(
             "user_id": current_user.id,
             "username": current_user.username,
             "user_type": current_user.user_details.get("type", "normal"),
-            "created_at": datetime.now(datetime.timezone.utc)
+            "created_at": datetime.now(timezone.utc)
         }
         
         # Add comment to article
@@ -89,7 +89,7 @@ async def update_comment(
             {
                 "$set": {
                     "comments.$.text": text,
-                    "comments.$.updated_at": datetime.now(datetime.timezone.utc)
+                    "comments.$.updated_at": datetime.now(timezone.utc)
                 }
             },
             return_document=ReturnDocument.AFTER

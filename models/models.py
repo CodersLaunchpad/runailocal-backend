@@ -93,6 +93,14 @@ class UserInDB(UserBase):
     favorites: List[PyObjectId] = []
     following: List[PyObjectId] = []
 
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "json_encoders": {
+            ObjectId: str
+        }
+    }
+
 class UserUpdate(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None

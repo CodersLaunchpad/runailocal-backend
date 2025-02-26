@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from models.models import PyObjectId, UserCreate, UserInDB, ArticleInDB, UserUpdate
 from helpers.auth import get_password_hash, get_current_active_user, get_admin_user
@@ -31,13 +31,13 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
     hashed_password = get_password_hash(user.password)
     user_dict = user.dict(exclude={"password"})
     user_dict["password_hash"] = hashed_password
-    user_dict["created_at"] = datetime.now(datetime.timezone.utc)
+    user_dict["created_at"] = datetime.now(timezone.utc)
     
     # Set user details based on type
     if user.user_type == "normal":
         user_dict["user_details"] = {
             "type": "normal",
-            "signup_date": datetime.now(datetime.timezone.utc),
+            "signup_date": datetime.now(timezone.utc),
             "email_notifications": True,
             "reading_preferences": []
         }
@@ -53,7 +53,7 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
         # Only existing admins can create new admins, otherwise default to normal user
         user_dict["user_details"] = {
             "type": "normal",
-            "signup_date": datetime.now(datetime.timezone.utc),
+            "signup_date": datetime.now(timezone.utc),
             "email_notifications": True
         }
     

@@ -47,13 +47,13 @@ async def create_article(
     
     # Add author info
     article_dict["author_id"] = current_user.id
-    article_dict["created_at"] = datetime.now(datetime.timezone.utc)
+    article_dict["created_at"] = datetime.now(timezone.utc)
     article_dict["images"] = []
     article_dict["comments"] = []
     
     # If user is admin, article can be published immediately
     if current_user.user_details.get("type") == "admin":
-        article_dict["published_at"] = datetime.now(datetime.timezone.utc)
+        article_dict["published_at"] = datetime.now(timezone.utc)
     
     # Insert into database
     result = await db.articles.insert_one(article_dict)
@@ -198,7 +198,7 @@ async def update_article(
                 raise HTTPException(status_code=400, detail="Invalid category ID")
         
         update_data = {k: v for k, v in article_update.dict(exclude_unset=True).items() if v is not None}
-        update_data["updated_at"] = datetime.now(datetime.timezone.utc)
+        update_data["updated_at"] = datetime.now(timezone.utc)
         
         if update_data:
             updated_article = await db.articles.find_one_and_update(
@@ -420,7 +420,7 @@ async def routerrove_article(
         # routerrove article by setting published date
         updated_article = await db.articles.find_one_and_update(
             {"_id": object_id, "published_at": None},
-            {"$set": {"published_at": datetime.now(datetime.timezone.utc)}},
+            {"$set": {"published_at": datetime.now(timezone.utc)}},
             return_document=ReturnDocument.AFTER
         )
         

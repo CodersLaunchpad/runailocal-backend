@@ -28,7 +28,7 @@ async def send_message(
             "recipient_id": recipient_id,
             "text": message.text,
             "read": False,
-            "created_at": datetime.now(datetime.timezone.utc)
+            "created_at": datetime.now(timezone.utc)
         }
         
         # Insert message
