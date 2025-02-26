@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
-from datetime import datetime
+from datetime import datetime, timezone
 from models.models import PyObjectId, UserInDB, CommentInDB, CommentCreate
 from helpers.auth import get_current_active_user
 from pymongo import ReturnDocument

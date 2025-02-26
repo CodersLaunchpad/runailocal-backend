@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, EmailStr
 from pydantic import GetCoreSchemaHandler
 from typing import Annotated, List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 from bson import ObjectId

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from models.models import Token
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi.security import OAuth2PasswordRequestForm
 from helpers.auth import create_access_token, authenticate_user

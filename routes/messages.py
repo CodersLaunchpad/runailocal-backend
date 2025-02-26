@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
-from datetime import datetime
+from datetime import datetime, timezone
 from models.models import PyObjectId, MessageCreate, MessageInDB, UserInDB
 from helpers.auth import get_current_active_user
 from typing import List
