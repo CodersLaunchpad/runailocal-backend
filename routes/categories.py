@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from typing import List
-from models.models import prepare_mongo_document
-from models.models import PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
+from models.models import prepare_mongo_document, PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
 from helpers.auth import get_admin_user
 from pymongo import ReturnDocument
 from db.db import get_db
