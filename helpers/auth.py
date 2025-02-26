@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from db.db import get_db
