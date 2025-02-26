@@ -13,13 +13,16 @@ def get_password_hash(password):
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-async def get_user(username: str, db = Depends(get_db)):
+# async def get_user(username: str, db = Depends(get_db)):
+async def get_user(username: str, db):
     user = await db.users.find_one({"username": username})
     if user:
-        return UserInDB(**user)
+        user["_id"] = str(user["_id"])  # Convert ObjectId to string
+    return UserInDB(**user) if user else None
 
-async def authenticate_user(username: str, password: str):
-    user = await get_user(username)
+async def authenticate_user(username: str, password: str, db):
+    user = await get_user(username,db)
+    # print(user)
     if not user:
         return False
     if not verify_password(password, user.password_hash):

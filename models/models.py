@@ -98,8 +98,26 @@ class UserInDB(UserBase):
         "populate_by_name": True,
         "json_encoders": {
             ObjectId: str
+        },
+        # Add this to allow Pydantic to automatically convert ObjectId to string
+        "json_schema_extra": {
+            "example": {
+                "_id": "67beed4f38b4657e1f23cc80",
+                "password_hash": "hashed_password",
+                "created_at": "2023-01-01T00:00:00",
+                "user_details": {},
+                "favorites": [],
+                "following": []
+            }
         }
     }
+    
+    # Add this method to handle conversion
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        if isinstance(obj.get("_id"), ObjectId):
+            obj["_id"] = str(obj["_id"])
+        return super().model_validate(obj, *args, **kwargs)
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None

@@ -1,3 +1,4 @@
+from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timezone
 from typing import List
@@ -65,6 +66,10 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
     
     # Get the created user
     created_user = await db.users.find_one({"_id": result.inserted_id})
+    # Convert ObjectId to string before returning
+    if created_user and isinstance(created_user.get("_id"), ObjectId):
+        created_user["_id"] = str(created_user["_id"])
+        
     return created_user
 
 @router.get("/me", response_model=UserInDB)
