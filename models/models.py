@@ -1,21 +1,39 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Dict, Any, Annotated
+from pydantic import GetCoreSchemaHandler
+from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime
 from bson import ObjectId
 
-# Define a validator for ObjectId
-def validate_object_id(v):
+from bson import ObjectId
+
+# Helper functions to handle ObjectId
+def ensure_object_id(v):
+    """Convert to ObjectId or validate existing ObjectId"""
     if isinstance(v, ObjectId):
         return v
     if isinstance(v, str):
         try:
             return ObjectId(v)
         except Exception:
-            raise ValueError("Invalid ObjectId format")
-    raise ValueError("Invalid ObjectId")
+            raise ValueError(f"Invalid ObjectId: {v}")
+    raise ValueError(f"Cannot convert {type(v)} to ObjectId")
 
-# Custom types
-PyObjectId = Annotated[str, Field(description="MongoDB ObjectId", validators=[validate_object_id])]
+def object_id_to_str(v):
+    """Convert ObjectId to string"""
+    if isinstance(v, ObjectId):
+        return str(v)
+    if isinstance(v, str):
+        # Validate it's a valid ObjectId format
+        try:
+            ObjectId(v)
+            return v
+        except:
+            raise ValueError(f"Invalid ObjectId string: {v}")
+    raise ValueError(f"Expected ObjectId or string, got {type(v)}")
+
+# Use Annotated to create a type that validates ObjectId strings
+PyObjectId = Annotated[str, Field(default_factory=lambda: str(ObjectId()))]
+
 
 # Models
 class UserBase(BaseModel):
