@@ -31,6 +31,28 @@ def object_id_to_str(v):
             raise ValueError(f"Invalid ObjectId string: {v}")
     raise ValueError(f"Expected ObjectId or string, got {type(v)}")
 
+def prepare_mongo_document(doc):
+    """Convert all ObjectId fields to strings in a MongoDB document"""
+    if not doc:
+        return doc
+        
+    result = doc.copy()
+    
+    # Convert top-level _id
+    if isinstance(result.get("_id"), ObjectId):
+        result["_id"] = str(result["_id"])
+    
+    # Handle nested objects that might contain ObjectIds
+    for key, value in result.items():
+        # Handle nested documents
+        if isinstance(value, dict):
+            result[key] = prepare_mongo_document(value)
+        # Handle arrays of documents
+        elif isinstance(value, list) and len(value) > 0 and isinstance(value[0], dict):
+            result[key] = [prepare_mongo_document(item) for item in value]
+            
+    return result
+
 # Use Annotated to create a type that validates ObjectId strings
 PyObjectId = Annotated[str, Field(default_factory=lambda: str(ObjectId()))]
 

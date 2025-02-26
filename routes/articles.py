@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, Depends, UploadFile
 from datetime import datetime, timezone
 from typing import List, Optional
+from models import prepare_mongo_document
 from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate
 from helpers.auth import get_current_active_user, get_admin_user, get_author_user
 from pymongo import ReturnDocument
