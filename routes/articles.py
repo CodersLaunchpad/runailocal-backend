@@ -17,6 +17,7 @@ async def create_article(
     db = Depends(get_db)
 ):
     # Check if category exists
+    print("got here supaaa firrre")
     category_id = article.category.get("_id")
     if category_id:
         try:
@@ -52,7 +53,8 @@ async def create_article(
     article_dict["comments"] = []
     
     # If user is admin, article can be published immediately
-    if current_user.user_details.get("type") == "admin":
+    # if current_user.user_details.get("type") == "admin":
+    if current_user.user_type == "admin":
         article_dict["published_at"] = datetime.now(timezone.utc)
     
     # Insert into database
@@ -161,7 +163,8 @@ async def update_article(
             raise HTTPException(status_code=404, detail="Article not found")
         
         # Check if user is author or admin
-        if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(article["author_id"]) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
@@ -229,7 +232,8 @@ async def delete_article(
             raise HTTPException(status_code=404, detail="Article not found")
         
         # Check if user is author or admin
-        if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(article["author_id"]) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
@@ -276,7 +280,8 @@ async def upload_article_image(
             raise HTTPException(status_code=404, detail="Article not found")
         
         # Check if user is author or admin
-        if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(article["author_id"]) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
@@ -337,7 +342,8 @@ async def delete_article_image(
             raise HTTPException(status_code=404, detail="Article not found")
         
         # Check if user is author or admin
-        if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(article["author_id"]) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"

@@ -74,7 +74,8 @@ async def update_comment(
             raise HTTPException(status_code=404, detail="Comment not found")
         
         # Check if user is comment author or admin
-        if str(comment.get("user_id")) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(comment.get("user_id")) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(comment.get("user_id")) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
@@ -136,7 +137,8 @@ async def delete_comment(
             raise HTTPException(status_code=404, detail="Comment not found")
         
         # Check if user is comment author or admin
-        if str(comment.get("user_id")) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        # if str(comment.get("user_id")) != str(current_user.id) and current_user.user_details.get("type") != "admin":
+        if str(comment.get("user_id")) != str(current_user.id) and current_user.user_type != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"

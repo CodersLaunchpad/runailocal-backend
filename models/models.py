@@ -87,6 +87,7 @@ class NormalUserDetails(BaseModel):
 class UserInDB(UserBase):
     id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     password_hash: str
+    user_type: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
     user_details: Dict[str, Any] = {}

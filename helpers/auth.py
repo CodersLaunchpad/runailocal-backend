@@ -14,7 +14,7 @@ def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 # async def get_user(username: str, db = Depends(get_db)):
-async def get_user(username: str, db):
+async def get_user(username: str, db=get_db()):
     user = await db.users.find_one({"username": username})
     if user:
         user["_id"] = str(user["_id"])  # Convert ObjectId to string
@@ -34,7 +34,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(hours=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     return encoded_jwt
@@ -45,8 +45,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print("checknt 1")
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        print(payload)
         username: str = payload.get("sub")
         user_id: str = payload.get("id")
         user_type: str = payload.get("type")
@@ -55,18 +57,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         token_data = TokenData(username=username, user_id=user_id, user_type=user_type)
     except jwt.PyJWTError:
         raise credentials_exception
-    user = await get_user(username=token_data.username)
+    user = await get_user(username=token_data.username, db= await get_db())
     if user is None:
         raise credentials_exception
     return user
 
 async def get_current_active_user(current_user: UserInDB = Depends(get_current_user)):
+    print("chkpnt 3")
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
 async def get_admin_user(current_user: UserInDB = Depends(get_current_active_user)):
-    if current_user.user_details.get("type") != "admin":
+    # if current_user.user_details.get("type") != "admin":
+    if current_user.user_type != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -74,7 +78,10 @@ async def get_admin_user(current_user: UserInDB = Depends(get_current_active_use
     return current_user
 
 async def get_author_user(current_user: UserInDB = Depends(get_current_active_user)):
-    if current_user.user_details.get("type") not in ["author", "admin"]:
+    print("chkpnt 2")
+    print(current_user)
+    # if current_user.user_details.get("type") not in ["author", "admin"]:
+    if current_user.user_type not in ["author", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"

@@ -27,12 +27,14 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         {"$set": {"last_login": datetime.now(timezone.utc)}}
     )
     
-    access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    # access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(hours=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={
             "sub": user.username, 
             "id": str(user.id), 
-            "type": user.user_details.get("type", "normal")
+            # "type": user.user_details.get("type", "normal"),
+            "type": user.user_type
         },
         expires_delta=access_token_expires
     )
