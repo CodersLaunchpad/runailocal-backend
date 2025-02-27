@@ -38,7 +38,11 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         },
         expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    print("profile_picture_base64", user.profile_picture_base64)
+    # return {"access_token": access_token, "token_type": "bearer", "profile_picture_base64": user.profile_picture_base64}
+    data_to_return = {"access_token": access_token, "token_type": "bearer", "profile_picture_base64": user.profile_picture_base64}
+    print("data to return", data_to_return)
+    return data_to_return
 
 @router.get("/check-availability")
 async def check_availability(

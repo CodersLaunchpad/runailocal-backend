@@ -133,6 +133,7 @@ class UserInDB(UserBase):
     user_details: Dict[str, Any] = {}
     favorites: List[PyObjectId] = []
     following: List[PyObjectId] = []
+    profile_picture_base64:  str
 
     model_config = {
         "arbitrary_types_allowed": True,
@@ -173,6 +174,7 @@ class UserUpdate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    profile_picture_base64: str
     token_type: str
 
 class TokenData(BaseModel):
