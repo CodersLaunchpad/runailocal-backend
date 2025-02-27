@@ -1,3 +1,7 @@
+import base64
+import io
+import os
+import random
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
@@ -7,6 +11,7 @@ from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, 
 from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
+from PIL import Image, ImageDraw, ImageFont
 
 router = APIRouter()
 
@@ -61,6 +66,7 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
     
     user_dict["favorites"] = []
     user_dict["following"] = []
+    user_dict["followers"] = []
     
     # Insert into database
     result = await db.users.insert_one(user_dict)
@@ -91,11 +97,45 @@ async def register_user(user: UserCreate, db = Depends(get_db)):
             detail="Email already registered"
         )
     
+    # Process profile picture or generate avatar
+    profile_picture_base64 = None
+    
+    if user.profile_picture:
+        try:
+            # The user.profile_picture is already in base64 format from the frontend
+            # Just clean it up if needed
+            if ',' in user.profile_picture:
+                # Keep the full data URL format for frontend display
+                profile_picture_base64 = user.profile_picture
+            else:
+                # Add the data URL prefix if it's missing
+                profile_picture_base64 = f"data:image/jpeg;base64,{user.profile_picture}"
+                
+        except Exception as e:
+            # Log the error but continue with registration
+            print(f"Error processing profile picture: {str(e)}")
+            # Fall back to generating an avatar
+            if user.first_name and user.last_name:
+                initials = (user.first_name[0] + user.last_name[0]).upper()
+            else:
+                initials = user.username[:2].upper()
+            profile_picture_base64 = generate_initials_avatar_base64(initials)
+    
+    elif user.profile_picture_initials:
+        # Generate an avatar with the provided initials
+        profile_picture_base64 = generate_initials_avatar_base64(user.profile_picture_initials)
+    
+    else:
+        # Generate default initials from username
+        initials = user.username[:2].upper()
+        profile_picture_base64 = generate_initials_avatar_base64(initials)
+    
     # Create user object
     hashed_password = get_password_hash(user.password)
-    user_dict = user.dict(exclude={"password"})
+    user_dict = user.dict(exclude={"password", "profile_picture", "profile_picture_initials"})
     user_dict["password_hash"] = hashed_password
     user_dict["created_at"] = datetime.now(timezone.utc)
+    user_dict["profile_picture_base64"] = profile_picture_base64
     
     # Set user details based on type
     if user.user_type == "normal":
@@ -110,7 +150,7 @@ async def register_user(user: UserCreate, db = Depends(get_db)):
             "type": "author",
             "bio": "",
             "slug": user.username.lower().replace(" ", "-"),
-            "picture_url": "",
+            "profile_picture": profile_picture_base64,  # Use the profile picture here too
             "articles_count": 0
         }
     elif user.user_type == "admin":
@@ -123,6 +163,7 @@ async def register_user(user: UserCreate, db = Depends(get_db)):
     
     user_dict["favorites"] = []
     user_dict["following"] = []
+    user_dict["followers"] = []
     
     # Insert into database
     result = await db.users.insert_one(user_dict)
@@ -133,17 +174,11 @@ async def register_user(user: UserCreate, db = Depends(get_db)):
     if created_user and isinstance(created_user.get("_id"), ObjectId):
         created_user["_id"] = str(created_user["_id"])
     
-    print("created user object: ", create_user)
+    print("created user object: ", created_user)
 
     # access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token_expires = timedelta(hours=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        # data={
-        #     "sub": created_user.username, 
-        #     "id": str(created_user.id), 
-        #     # "type": user.user_details.get("type", "normal"),
-        #     "type": created_user.user_type
-        # },
         data={
             "sub": created_user["username"],
             "id": created_user["_id"],
@@ -151,9 +186,68 @@ async def register_user(user: UserCreate, db = Depends(get_db)):
         },
         expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # Return the token and profile picture as base64
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "profile_picture_base64": profile_picture_base64
+    }
 
-    return created_user
+# Helper function to generate an avatar with initials and return as base64
+def generate_initials_avatar_base64(initials):
+    # Ensure we have at least one character
+    initials = initials[:2].upper() if initials else "U"
+    
+    # Create a random background color - using pastel colors
+    bg_color = (
+        random.randint(100, 200),  # R
+        random.randint(100, 200),  # G
+        random.randint(100, 200),  # B
+    )
+    
+    # Create a new image with a colored background
+    img_size = 200
+    img = Image.new('RGB', (img_size, img_size), color=bg_color)
+    draw = ImageDraw.Draw(img)
+    
+    # Try to use a font, or fall back to default
+    try:
+        # Try to load a font - adjust the path based on your server
+        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        if not os.path.exists(font_path):
+            font_path = "C:\\Windows\\Fonts\\arial.ttf"
+            if not os.path.exists(font_path):
+                font = ImageFont.load_default()
+            else:
+                font = ImageFont.truetype(font_path, size=80)
+        else:
+            font = ImageFont.truetype(font_path, size=80)
+    except Exception:
+        font = ImageFont.load_default()
+    
+    # Calculate text size to center it
+    try:
+        text_bbox = draw.textbbox((0, 0), initials, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+    except AttributeError:
+        # For older Pillow versions
+        text_width, text_height = draw.textsize(initials, font=font)
+    
+    position = ((img_size - text_width) // 2, (img_size - text_height) // 2)
+    
+    # Draw the text in white
+    draw.text(position, initials, font=font, fill=(255, 255, 255))
+    
+    # Convert the image to base64 without saving to disk
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    
+    # Return as data URL format for easy use in img tags
+    return f"data:image/png;base64,{img_str}"
+
 
 
 @router.get("/me", response_model=UserInDB)

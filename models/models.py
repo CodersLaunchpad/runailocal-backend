@@ -74,6 +74,8 @@ class UserCreate(UserBase):
     password: str
     user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
     region: Optional[str] = None
+    profile_picture: Optional[str] = None
+    profile_picture_initials: Optional[str] = None
 
 # class UserCreate(BaseModel):
 #     password: str
