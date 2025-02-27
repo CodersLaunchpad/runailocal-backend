@@ -39,10 +39,14 @@ async def read_categories(db=Depends(get_db)):
 @router.get("/{category_id}", response_model=CategoryInDB)
 async def read_category(category_id: str, db = Depends(get_db)):
     try:
-        object_id = PyObjectId(category_id)
+        from models.models import ensure_object_id
+        object_id = ensure_object_id(category_id)
+        # object_id = PyObjectId(category_id)
+
+        print("Object id is: ", object_id)
         category = await db.categories.find_one({"_id": object_id})
         if category:
-            return category
+            return prepare_mongo_document(category)
         raise HTTPException(status_code=404, detail="Category not found")
     except:
         raise HTTPException(status_code=400, detail="Invalid category ID")
