@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from typing import List
-from models.models import prepare_mongo_document, PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
+from models.models import ensure_object_id, prepare_mongo_document, PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
 from helpers.auth import get_admin_user
 from pymongo import ReturnDocument
 from db.db import get_db
@@ -55,11 +55,11 @@ async def read_category(category_id: str, db = Depends(get_db)):
 async def update_category(
     category_id: str,
     category_update: CategoryUpdate,
-    current_user: UserInDB = Depends(get_admin_user),
-    db = Depends(get_db)
+    current_user: UserInDB = Depends(get_admin_user)
 ):
     try:
-        object_id = PyObjectId(category_id)
+        db = await get_db()
+        object_id = ensure_object_id(category_id)
         
         # Check if slug is being updated and is unique
         if category_update.slug:
@@ -93,11 +93,11 @@ async def update_category(
                         }}
                     )
                 
-                return updated_category
+                return prepare_mongo_document(updated_category)
         
         raise HTTPException(status_code=404, detail="Category not found")
-    except:
-        raise HTTPException(status_code=400, detail="Invalid category ID")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid category ID - {e}")
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
@@ -106,7 +106,7 @@ async def delete_category(
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(category_id)
+        object_id = ensure_object_id(category_id)
         
         # Check if category has articles
         article_count = await db.articles.count_documents({"category._id": str(object_id)})
