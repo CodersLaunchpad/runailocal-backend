@@ -44,7 +44,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def check_availability(
     collection: str, 
     field: str, 
-    value: str, 
+    value: str,
+    case_sensitive: bool = False,
     db = Depends(get_db)
 ):
     """
@@ -54,16 +55,21 @@ async def check_availability(
       - collection: The collection name (e.g., "users", "categories").
       - field: The field to check (e.g., "username", "email", "name").
       - value: The value to verify.
-
+      - case_sensitive: Whether the search should be case sensitive (default is False).
+    
     Returns:
       - available (bool): True if the value is not taken; False otherwise.
       - message (str): A message indicating the status.
     """
     try:
-        # Use the provided collection name from the database
         coll = db[collection]
-        # Build the query dynamically
-        document = await coll.find_one({field: value})
+        if not case_sensitive:
+            # Case-insensitive: use a regex that matches the entire string (ignoring case)
+            query = {field: {"$regex": f"^{value}$", "$options": "i"}}
+        else:
+            query = {field: value}
+        
+        document = await coll.find_one(query)
         if document:
             return {"available": False, "message": f"{field} is already taken."}
         return {"available": True, "message": f"{field} is available."}
