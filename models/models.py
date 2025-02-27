@@ -4,8 +4,6 @@ from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
 
-from bson import ObjectId
-
 # Helper functions to handle ObjectId
 def ensure_object_id(v):
     """Convert to ObjectId or validate existing ObjectId"""
