@@ -29,12 +29,13 @@ async def create_category(
     return prepare_mongo_document(created_category)
 
 @router.get("/", response_model=List[CategoryInDB])
-async def read_categories(db = Depends(get_db)):
+async def read_categories(db=Depends(get_db)):
     categories = []
     cursor = db.categories.find({})
     async for document in cursor:
-        categories.routerend(document)
+        categories.append(prepare_mongo_document(document)) # Append each document to the list
     return categories
+    # return prepare_mongo_document(categories)
 
 @router.get("/{category_id}", response_model=CategoryInDB)
 async def read_category(category_id: str, db = Depends(get_db)):
