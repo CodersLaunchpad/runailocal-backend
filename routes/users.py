@@ -1,9 +1,10 @@
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
-from models.models import PyObjectId, UserCreate, UserInDB, ArticleInDB, UserUpdate
-from helpers.auth import get_password_hash, get_current_active_user, get_admin_user
+from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate
+from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
 
@@ -69,8 +70,91 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
     # Convert ObjectId to string before returning
     if created_user and isinstance(created_user.get("_id"), ObjectId):
         created_user["_id"] = str(created_user["_id"])
-        
+
     return created_user
+
+@router.post("/register", response_model=Token)
+async def register_user(user: UserCreate, db = Depends(get_db)):
+    # Check if username already exists
+    existing_user = await db.users.find_one({"username": user.username})
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+    
+    # Check if email already exists
+    existing_email = await db.users.find_one({"email": user.email})
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create user object
+    hashed_password = get_password_hash(user.password)
+    user_dict = user.dict(exclude={"password"})
+    user_dict["password_hash"] = hashed_password
+    user_dict["created_at"] = datetime.now(timezone.utc)
+    
+    # Set user details based on type
+    if user.user_type == "normal":
+        user_dict["user_details"] = {
+            "type": "normal",
+            "signup_date": datetime.now(timezone.utc),
+            "email_notifications": True,
+            "reading_preferences": []
+        }
+    elif user.user_type == "author":
+        user_dict["user_details"] = {
+            "type": "author",
+            "bio": "",
+            "slug": user.username.lower().replace(" ", "-"),
+            "picture_url": "",
+            "articles_count": 0
+        }
+    elif user.user_type == "admin":
+        # Only existing admins can create new admins, otherwise default to normal user
+        user_dict["user_details"] = {
+            "type": "normal",
+            "signup_date": datetime.now(timezone.utc),
+            "email_notifications": True
+        }
+    
+    user_dict["favorites"] = []
+    user_dict["following"] = []
+    
+    # Insert into database
+    result = await db.users.insert_one(user_dict)
+    
+    # Get the created user
+    created_user = await db.users.find_one({"_id": result.inserted_id})
+    # Convert ObjectId to string before returning
+    if created_user and isinstance(created_user.get("_id"), ObjectId):
+        created_user["_id"] = str(created_user["_id"])
+    
+    print("created user object: ", create_user)
+
+    # access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(hours=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        # data={
+        #     "sub": created_user.username, 
+        #     "id": str(created_user.id), 
+        #     # "type": user.user_details.get("type", "normal"),
+        #     "type": created_user.user_type
+        # },
+        data={
+            "sub": created_user["username"],
+            "id": created_user["_id"],
+            "type": created_user["user_type"]
+        },
+        expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+    return created_user
+
 
 @router.get("/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):

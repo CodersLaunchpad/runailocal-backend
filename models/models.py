@@ -4,6 +4,8 @@ from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
 
+from bson import ObjectId
+
 # Helper functions to handle ObjectId
 def ensure_object_id(v):
     """Convert to ObjectId or validate existing ObjectId"""
@@ -71,6 +73,22 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
+    region: Optional[str] = None
+
+# class UserCreate(BaseModel):
+#     password: str
+#     user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
+#     region: Optional[str] = None
+#     username: str
+#     email: EmailStr
+#     first_name: Optional[str] = None
+#     last_name: Optional[str] = None
+#     is_active: bool = True
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True
+    }
 
 class AuthorDetails(BaseModel):
     bio: Optional[str] = None
