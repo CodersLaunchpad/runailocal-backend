@@ -5,7 +5,7 @@ from typing import Optional
 
 from db.db import get_db
 from config import oauth2_scheme, pwd_context, JWT_SECRET_KEY, JWT_ALGORITHM
-from models.models import UserInDB, TokenData
+from models.models import UserInDB, TokenData, object_id_to_str
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -18,6 +18,7 @@ async def get_user(username: str, db=get_db()):
     user = await db.users.find_one({"username": username})
     if user:
         user["_id"] = str(user["_id"])  # Convert ObjectId to string
+        # user["_id"] = object_id_to_str(user["_id"])  # Convert ObjectId to string
     return UserInDB(**user) if user else None
 
 async def authenticate_user(username: str, password: str, db):

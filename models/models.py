@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, validator
 from pydantic import GetCoreSchemaHandler
 from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timezone
@@ -55,6 +55,7 @@ def prepare_mongo_document(doc):
 
 # Use Annotated to create a type that validates ObjectId strings
 PyObjectId = Annotated[str, Field(default_factory=lambda: str(ObjectId()))]
+
 
 
 # Models
@@ -133,7 +134,15 @@ class UserInDB(UserBase):
     user_details: Dict[str, Any] = {}
     favorites: List[PyObjectId] = []
     following: List[PyObjectId] = []
+    followers: List[PyObjectId] = []
     profile_picture_base64:  str
+
+    # Add validators to ensure ObjectId conversion in lists
+    @validator('following', 'favorites', 'followers', pre=True)
+    def convert_object_ids(cls, v):
+        if isinstance(v, list):
+            return [PyObjectId(x) for x in v]
+        return v
 
     model_config = {
         "arbitrary_types_allowed": True,

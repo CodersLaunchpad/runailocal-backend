@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
 from typing import List
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate
+from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, object_id_to_str
 from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
@@ -34,11 +34,45 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
             detail="Email already registered"
         )
     
+    # Process profile picture or generate avatar
+    profile_picture_base64 = None
+    
+    if user.profile_picture:
+        try:
+            # The user.profile_picture is already in base64 format from the frontend
+            # Just clean it up if needed
+            if ',' in user.profile_picture:
+                # Keep the full data URL format for frontend display
+                profile_picture_base64 = user.profile_picture
+            else:
+                # Add the data URL prefix if it's missing
+                profile_picture_base64 = f"data:image/jpeg;base64,{user.profile_picture}"
+                
+        except Exception as e:
+            # Log the error but continue with registration
+            print(f"Error processing profile picture: {str(e)}")
+            # Fall back to generating an avatar
+            if user.first_name and user.last_name:
+                initials = (user.first_name[0] + user.last_name[0]).upper()
+            else:
+                initials = user.username[:2].upper()
+            profile_picture_base64 = generate_initials_avatar_base64(initials)
+    
+    elif user.profile_picture_initials:
+        # Generate an avatar with the provided initials
+        profile_picture_base64 = generate_initials_avatar_base64(user.profile_picture_initials)
+    
+    else:
+        # Generate default initials from username
+        initials = user.username[:2].upper()
+        profile_picture_base64 = generate_initials_avatar_base64(initials)
+    
     # Create user object
     hashed_password = get_password_hash(user.password)
     user_dict = user.dict(exclude={"password"})
     user_dict["password_hash"] = hashed_password
     user_dict["created_at"] = datetime.now(timezone.utc)
+    user_dict["profile_picture_base64"] = profile_picture_base64
     
     # Set user details based on type
     if user.user_type == "normal":
@@ -362,25 +396,46 @@ async def follow_author(
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(author_id)
-        
+        # Convert the string ID to PyObjectId
+        # object_id = PyObjectId(author_id)
+        object_id = ensure_object_id(author_id)
+        print(f"Author ID to follow: {author_id}, Object ID: {object_id}")
+        print("current user: ", current_user)
+
         # Check if author exists and is actually an author
-        author = await db.users.find_one({"_id": object_id, "user_details.type": "author"})
+        # author = await db.users.find_one({"_id": object_id, "user_details.type": "author"})
+        # TODO: figure out author controls later
+        author = await db.users.find_one({"_id": object_id})
         if not author:
             raise HTTPException(status_code=404, detail="Author not found")
-        
-        # Add author to following list if not already following
-        if object_id not in current_user.following:
-            await db.users.update_one(
-                {"_id": current_user.id},
+
+        print(f"Found author: {author.get('username', 'Unknown')}")
+
+        # Convert current user's following list to PyObjectId objects for comparison
+        following_ids = [ensure_object_id(str(_id)) for _id in current_user.following]
+
+        # Check if already following
+        if object_id not in following_ids:
+            # Ensure the user ID is also properly converted to ObjectId
+            user_object_id = ensure_object_id(str(current_user.id))
+            result = await db.users.update_one(
+                {"_id": user_object_id},
                 {"$addToSet": {"following": object_id}}
             )
-            return {"status": "success", "message": "Author followed successfully"}
+
+            if result.modified_count:
+                return {"status": "success", "message": "Author followed successfully"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to update following list")
         else:
             return {"status": "info", "message": "Already following this author"}
-    except:
-        raise HTTPException(status_code=400, detail="Invalid author ID")
-
+    # except InvalidId:
+    #     # MongoDB's InvalidId exception for malformed ObjectIds
+    #     raise HTTPException(status_code=400, detail="Invalid author ID format")
+    except Exception as e:
+        print(f"Error following author: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
 @router.post("/unfollow/{author_id}", status_code=status.HTTP_200_OK)
 async def unfollow_author(
     author_id: str,
