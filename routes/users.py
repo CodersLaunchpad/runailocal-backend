@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
 from typing import List
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, object_id_to_str
+from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, prepare_mongo_document
 from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
@@ -329,12 +329,14 @@ async def get_user_by_id(
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(user_id)
+        object_id = ensure_object_id(user_id)
+        
+        # Let's try to find the document
         user = await db.users.find_one({"_id": object_id})
         if user:
-            return user
+            return prepare_mongo_document(user)
         raise HTTPException(status_code=404, detail="User not found")
-    except:
+    except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
 @router.put("/{user_id}", response_model=UserInDB)
