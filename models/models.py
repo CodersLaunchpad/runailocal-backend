@@ -77,6 +77,7 @@ class UserCreate(UserBase):
     region: Optional[str] = None
     profile_picture: Optional[str] = None
     profile_picture_initials: Optional[str] = None
+    date_of_birth: str
 
 # class UserCreate(BaseModel):
 #     password: str
