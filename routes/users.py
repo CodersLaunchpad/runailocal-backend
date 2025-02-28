@@ -487,18 +487,65 @@ async def unfollow_author(
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(author_id)
+        # Convert the string ID to ObjectId
+        object_id = ensure_object_id(author_id)
+        print(f"Author ID to unfollow: {author_id}, Object ID: {object_id}")
         
-        # Remove author from following list
-        await db.users.update_one(
-            {"_id": current_user.id},
+        # Check if author exists
+        author = await db.users.find_one({"_id": object_id})
+        if not author:
+            raise HTTPException(status_code=404, detail="Author not found")
+            
+        print(f"Found author: {author.get('username', 'Unknown')}")
+        
+        # Ensure the user ID is properly converted to ObjectId
+        user_object_id = ensure_object_id(str(current_user.id))
+        
+        # Convert current user's following list to ObjectId objects for comparison
+        following_ids = [ensure_object_id(str(_id)) for _id in current_user.following]
+        
+        # Check if author's followers list exists and if user is in it
+        author_followers = author.get('followers', [])
+        author_follower_ids = [ensure_object_id(str(_id)) for _id in author_followers]
+        
+        # Check the state of the follow relationship
+        is_following = object_id in following_ids
+        is_follower = user_object_id in author_follower_ids
+        
+        # No follow relationship exists
+        if not is_following and not is_follower:
+            return {"status": "info", "message": "You are not following this author"}
+            
+        # Prepare for updates - we'll attempt both sides regardless of current state
+        # to ensure consistency
+        
+        # Remove author from user's following list
+        user_result = await db.users.update_one(
+            {"_id": user_object_id},
             {"$pull": {"following": object_id}}
         )
         
-        return {"status": "success", "message": "Author unfollowed successfully"}
-    except:
-        raise HTTPException(status_code=400, detail="Invalid author ID")
-
+        # Remove user from author's followers list
+        author_result = await db.users.update_one(
+            {"_id": object_id},
+            {"$pull": {"followers": user_object_id}}
+        )
+        
+        # Check results and return appropriate response
+        if user_result.modified_count and author_result.modified_count:
+            return {"status": "success", "message": "Author unfollowed successfully"}
+        elif user_result.modified_count:
+            return {"status": "partial", "message": "Removed from your following list, but couldn't update author's followers"}
+        elif author_result.modified_count:
+            return {"status": "partial", "message": "Removed from author's followers, but couldn't update your following list"}
+        else:
+            # If nothing was modified despite the checks indicating a relationship existed
+            return {"status": "warning", "message": "No changes made to follow relationship"}
+            
+    except Exception as e:
+        print(f"Error unfollowing author: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
 @router.get("/me/following", response_model=List[UserInDB])
 async def get_following(
     current_user: UserInDB = Depends(get_current_active_user),
