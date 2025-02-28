@@ -2,38 +2,40 @@ import os
 import uuid
 from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, Depends, UploadFile
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from models.models import prepare_mongo_document
-from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate
+from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
 from helpers.auth import get_current_active_user, get_admin_user, get_author_user
 from pymongo import ReturnDocument
 from db.db import get_db
 
 router = APIRouter()
 
-@router.post("/", response_model=ArticleInDB)
+""" @router.post("/", response_model=ArticleInDB)
 async def create_article(
     article: ArticleCreate = Body(...),
-    current_user: UserInDB = Depends(get_author_user),
+    # current_user: UserInDB = Depends(get_author_user),
+    current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
     # Check if category exists
     print("got here supaaa firrre")
-    category_id = article.category.get("_id")
+    category_id = article.category
     if category_id:
         try:
-            object_id = PyObjectId(category_id)
+            # object_id = PyObjectId(category_id)
+            object_id = ensure_object_id(category_id)
             category = await db.categories.find_one({"_id": object_id})
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
             
             # Set full category info
             article_dict = article.dict()
-            article_dict["category"] = {
-                "_id": str(category["_id"]),
-                "name": category["name"],
-                "slug": category["slug"]
-            }
+            # article_dict["category"] = {
+            #     "_id": str(category["_id"]),
+            #     "name": category["name"],
+            #     "slug": category["slug"]
+            # }
         except:
             raise HTTPException(status_code=400, detail="Invalid category ID")
     else:
@@ -70,7 +72,87 @@ async def create_article(
     # Get the created article
     created_article = await db.articles.find_one({"_id": result.inserted_id})
     return created_article
+ """
 
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def create_article(
+    article: ArticleCreate,
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """
+    Create a new article and save it to the database.
+    
+    The category_id and author_id are converted from string to ObjectId.
+    """
+    try:
+        # Convert string IDs to ObjectIds
+        category_id = ensure_object_id(article.category_id)
+        author_id = ensure_object_id(article.author_id)
+        
+        # Verify that category exists
+        category = await db.categories.find_one({"_id": category_id})
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        # Verify that author exists
+        author = await db.users.find_one({"_id": author_id})
+        if not author:
+            raise HTTPException(status_code=404, detail="Author not found")
+        
+        # Check if the current user is allowed to create this article
+        # if str(current_user.id) != article.author_id:
+        #     # If the current user is not the author, they need permissions
+        #     # You can add permission checks here
+        #     raise HTTPException(
+        #         status_code=status.HTTP_403_FORBIDDEN, 
+        #         detail="You don't have permission to create an article for this author"
+        #     )
+        
+        # Prepare article document
+        article_doc = article.model_dump(exclude={"category_id", "author_id"})
+        article_doc["category_id"] = category_id
+        article_doc["author_id"] = author_id
+        
+        # Add additional fields
+        article_doc["created_at"] = datetime.utcnow()
+        article_doc["updated_at"] = article_doc["created_at"]
+        article_doc["views"] = 0
+        article_doc["likes"] = 0
+        article_doc["comments"] = []
+        
+        # Insert article into database
+        result = await db.articles.insert_one(article_doc)
+        
+        # Get the created article with its ID
+        created_article = await db.articles.find_one({"_id": result.inserted_id})
+        
+        # Create a serializable response with string IDs
+        response = {
+            "message": "Article created successfully",
+            "article": {
+                "id": str(created_article["_id"]),
+                "name": created_article["name"],
+                "slug": created_article["slug"],
+                "content": created_article["content"],
+                "excerpt": created_article.get("excerpt"),
+                "category_id": str(created_article["category_id"]),
+                "author_id": str(created_article["author_id"]),
+                "image": created_article["image"],
+                "read_time": created_article["read_time"],
+                "created_at": created_article["created_at"].isoformat() if isinstance(created_article["created_at"], datetime) else created_article["created_at"],
+                "updated_at": created_article["updated_at"].isoformat() if isinstance(created_article["updated_at"], datetime) else created_article["updated_at"],
+                "views": created_article["views"],
+                "likes": created_article["likes"]
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error creating article: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
 @router.get("/", response_model=List[ArticleInDB])
 async def read_articles(
     category: Optional[str] = None,

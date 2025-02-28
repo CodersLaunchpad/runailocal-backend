@@ -223,11 +223,18 @@ class CategoryUpdate(BaseModel):
 class ArticleBase(BaseModel):
     name: str
     slug: str
-    body: str
-    summary: Optional[str] = None
-    category: Dict[str, Any]
-    featured: bool = False
-    tags: List[str] = []
+    content: str
+    excerpt: Optional[str] = None
+    # category: Dict[str, Any]
+    # featured: bool = False
+    # tags: List[str] = []
+    # category: PyObjectId
+    # author: PyObjectId
+    category_id: str
+    author_id: str
+    image: str
+    read_time: str
+
 
     model_config = {
         "arbitrary_types_allowed": True
