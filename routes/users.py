@@ -399,7 +399,6 @@ async def follow_author(
 ):
     try:
         # Convert the string ID to PyObjectId
-        # object_id = PyObjectId(author_id)
         object_id = ensure_object_id(author_id)
         print(f"Author ID to follow: {author_id}, Object ID: {object_id}")
         print("current user: ", current_user)
@@ -415,29 +414,72 @@ async def follow_author(
 
         # Convert current user's following list to PyObjectId objects for comparison
         following_ids = [ensure_object_id(str(_id)) for _id in current_user.following]
-
-        # Check if already following
-        if object_id not in following_ids:
+        
+        # Convert the user ID to ObjectId for comparison
+        user_object_id = ensure_object_id(str(current_user.id))
+        
+        # Check if author's followers list exists and if user is already in it
+        author_followers = author.get('followers', [])
+        author_follower_ids = [ensure_object_id(str(_id)) for _id in author_followers]
+        
+        # Check if already following (on both sides)
+        already_following = object_id in following_ids
+        already_in_followers = user_object_id in author_follower_ids
+        
+        if not already_following and not already_in_followers:
             # Ensure the user ID is also properly converted to ObjectId
             user_object_id = ensure_object_id(str(current_user.id))
-            result = await db.users.update_one(
+            
+            # Update the current user's following list
+            user_result = await db.users.update_one(
                 {"_id": user_object_id},
                 {"$addToSet": {"following": object_id}}
             )
+            
+            # Update the author's followers list
+            author_result = await db.users.update_one(
+                {"_id": object_id},
+                {"$addToSet": {"followers": user_object_id}}
+            )
 
-            if result.modified_count:
+            if user_result.modified_count and author_result.modified_count:
                 return {"status": "success", "message": "Author followed successfully"}
+            elif user_result.modified_count:
+                # If only the user was updated but not the author
+                return {"status": "partial", "message": "Added to your following list, but couldn't update author's followers"}
             else:
-                raise HTTPException(status_code=500, detail="Failed to update following list")
+                raise HTTPException(status_code=500, detail="Failed to update following/followers lists")
         else:
-            return {"status": "info", "message": "Already following this author"}
+            # Handle different cases of partial relationship
+            if already_following and not already_in_followers:
+                # Fix one-sided relationship by updating author's followers
+                author_result = await db.users.update_one(
+                    {"_id": object_id},
+                    {"$addToSet": {"followers": user_object_id}}
+                )
+                if author_result.modified_count:
+                    return {"status": "fixed", "message": "Fixed one-sided follow relationship"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to update author's followers list")
+            elif not already_following and already_in_followers:
+                # Fix one-sided relationship by updating user's following
+                user_result = await db.users.update_one(
+                    {"_id": user_object_id},
+                    {"$addToSet": {"following": object_id}}
+                )
+                if user_result.modified_count:
+                    return {"status": "fixed", "message": "Fixed one-sided follow relationship"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to update following list")
+            else:
+                return {"status": "info", "message": "Already following this author"}
     # except InvalidId:
     #     # MongoDB's InvalidId exception for malformed ObjectIds
     #     raise HTTPException(status_code=400, detail="Invalid author ID format")
     except Exception as e:
         print(f"Error following author: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
+        
 @router.post("/unfollow/{author_id}", status_code=status.HTTP_200_OK)
 async def unfollow_author(
     author_id: str,
