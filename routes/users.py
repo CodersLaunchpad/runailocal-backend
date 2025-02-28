@@ -5,7 +5,7 @@ import random
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Any, Dict, List
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, prepare_mongo_document
 from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
@@ -559,3 +559,101 @@ async def get_following(
             following_users.routerend(author)
     
     return following_users
+
+@router.get("/user/{user_id}/stats", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+async def get_user_statistics(
+    user_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """
+    Retrieve comprehensive statistics for a user including:
+    - Follower count
+    - Following count
+    - Number of articles published
+    - Additional engagement metrics
+    """
+    try:
+        # Convert the string ID to ObjectId
+        object_id = ensure_object_id(user_id)
+        
+        # Find the user
+        user = await db.users.find_one({"_id": object_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get follower and following counts
+        followers = user.get("followers", [])
+        following = user.get("following", [])
+        follower_count = len(followers)
+        following_count = len(following)
+        
+        # Get all articles written by this user
+        articles_cursor = db.articles.find({"user_id": object_id})
+        articles = await articles_cursor.to_list(length=100)  # Limit to 100 articles
+        
+        # Count total articles
+        article_count = len(articles)
+        
+        # Process article data
+        article_list = []
+        total_views = 0
+        total_likes = 0
+        total_comments = 0
+        
+        for article in articles:
+            # Calculate comment count
+            comment_count = len(article.get("comments", []))
+            
+            # Get article metadata
+            article_data = {
+                "id": str(article.get("_id")),
+                "title": article.get("title", ""),
+                "slug": article.get("slug", ""),
+                "url": f"/articles/{article.get('slug', '')}",
+                "likes": article.get("likes", 0),
+                "views": article.get("views", 0),
+                "comment_count": comment_count,
+                "created_at": article.get("created_at", ""),
+                "excerpt": article.get("body", "")[:150] + "..." if len(article.get("body", "")) > 150 else article.get("body", ""),
+            }
+            
+            # Add to article list
+            article_list.append(article_data)
+            
+            # Update totals
+            total_views += article.get("views", 0)
+            total_likes += article.get("likes", 0)
+            total_comments += comment_count
+        
+        # Sort articles by creation date (newest first)
+        article_list = sorted(article_list, key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        # Check if current user is following this user
+        is_following = False
+        if str(current_user.id) != user_id:  # Don't check if viewing own profile
+            current_user_object_id = ensure_object_id(str(current_user.id))
+            is_following = current_user_object_id in [ensure_object_id(str(f_id)) for f_id in followers]
+        
+        # Build response
+        user_stats = {
+            "username": user.get("username", ""),
+            "first_name": user.get("first_name", ""),
+            "last_name": user.get("last_name", ""),
+            "follower_count": follower_count,
+            "following_count": following_count,
+            "article_count": article_count,
+            "total_views": total_views,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "articles": article_list,
+            "is_following": is_following,
+            "joined_date": user.get("created_at", ""),
+            # Include additional stats as needed
+        }
+        
+        return user_stats
+        
+    except Exception as e:
+        print(f"Error getting user statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
