@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from typing import List
-from models.models import ensure_object_id, prepare_mongo_document, PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
+from models.models import CategoryResponse, ensure_object_id, prepare_mongo_document, PyObjectId, UserInDB, CategoryInDB, CategoryCreate, CategoryUpdate
 from helpers.auth import get_admin_user
 from pymongo import ReturnDocument
 from db.db import get_db
@@ -27,7 +27,7 @@ async def create_category(
     # return created_category
     return prepare_mongo_document(created_category)
 
-@router.get("/", response_model=List[CategoryInDB])
+@router.get("/", response_model=List[CategoryResponse])
 async def read_categories(db=Depends(get_db)):
     categories = []
     cursor = db.categories.find({})
@@ -36,7 +36,7 @@ async def read_categories(db=Depends(get_db)):
     return categories
     # return prepare_mongo_document(categories)
 
-@router.get("/{category_id}", response_model=CategoryInDB)
+@router.get("/{category_id}", response_model=CategoryResponse)
 async def read_category(category_id: str, db = Depends(get_db)):
     try:
         from models.models import ensure_object_id

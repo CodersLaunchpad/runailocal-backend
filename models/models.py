@@ -32,15 +32,16 @@ def object_id_to_str(v):
     raise ValueError(f"Expected ObjectId or string, got {type(v)}")
 
 def prepare_mongo_document(doc):
-    """Convert all ObjectId fields to strings in a MongoDB document"""
+    """Convert all ObjectId fields to strings and rename _id to id in a MongoDB document"""
     if not doc:
         return doc
         
     result = doc.copy()
     
-    # Convert top-level _id
-    if isinstance(result.get("_id"), ObjectId):
-        result["_id"] = str(result["_id"])
+    # Convert top-level _id and rename to id
+    if "_id" in result:
+        result["id"] = str(result["_id"]) if isinstance(result["_id"], ObjectId) else result["_id"]
+        del result["_id"]
     
     # Handle nested objects that might contain ObjectIds
     for key, value in result.items():
@@ -208,6 +209,15 @@ class CategoryCreate(CategoryBase):
 
 class CategoryInDB(CategoryBase):
     id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+
+class CategoryResponse(CategoryBase):
+    id: str
+
+    class Config:
+        # This lets you map fields from the source model to different names
+        field_customizations = {
+            "id": {"alias": "_id"}
+        }
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
