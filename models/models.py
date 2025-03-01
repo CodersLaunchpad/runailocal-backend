@@ -32,26 +32,51 @@ def object_id_to_str(v):
     raise ValueError(f"Expected ObjectId or string, got {type(v)}")
 
 def prepare_mongo_document(doc):
-    """Convert all ObjectId fields to strings and rename _id to id in a MongoDB document"""
-    if not doc:
+    """
+    Convert all ObjectId values to strings and rename _id fields to id
+    """
+    if doc is None:
+        return None
+        
+    # Handle lists
+    if isinstance(doc, list):
+        return [prepare_mongo_document(item) for item in doc]
+        
+    # If not a dict, return as is
+    if not isinstance(doc, dict):
         return doc
         
-    result = doc.copy()
+    result = {}
     
-    # Convert top-level _id and rename to id
-    if "_id" in result:
-        result["id"] = str(result["_id"]) if isinstance(result["_id"], ObjectId) else result["_id"]
-        del result["_id"]
-    
-    # Handle nested objects that might contain ObjectIds
-    for key, value in result.items():
-        # Handle nested documents
+    for key, value in doc.items():
+        # Convert _id to id
+        if key == "_id":
+            result["id"] = str(value)
+            continue
+            
+        # Convert ObjectId values to strings
+        if isinstance(value, ObjectId):
+            result[key] = str(value)
+            continue
+            
+        # Convert datetime to ISO format string
+        if isinstance(value, datetime):
+            result[key] = value.isoformat()
+            continue
+            
+        # Handle nested dicts
         if isinstance(value, dict):
             result[key] = prepare_mongo_document(value)
-        # Handle arrays of documents
-        elif isinstance(value, list) and len(value) > 0 and isinstance(value[0], dict):
-            result[key] = [prepare_mongo_document(item) for item in value]
+            continue
             
+        # Handle lists that might contain dicts or ObjectIds
+        if isinstance(value, list):
+            result[key] = prepare_mongo_document(value)
+            continue
+            
+        # For all other types, use as is
+        result[key] = value
+        
     return result
 
 # Use Annotated to create a type that validates ObjectId strings

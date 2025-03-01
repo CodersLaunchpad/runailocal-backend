@@ -1,5 +1,6 @@
 import os
 import uuid
+from bson import ObjectId
 from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, Depends, UploadFile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -153,7 +154,57 @@ async def create_article(
         print(f"Error creating article: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
-@router.get("/", response_model=List[ArticleInDB])
+# @router.get("/", response_model=List[ArticleInDB])
+# async def read_articles(
+#     category: Optional[str] = None,
+#     author: Optional[str] = None,
+#     tag: Optional[str] = None,
+#     featured: Optional[bool] = None,
+#     published_only: bool = True,
+#     skip: int = 0,
+#     limit: int = 20,
+#     db = Depends(get_db)
+# ):
+#     query = {}
+    
+#     # Filter by category
+#     if category:
+#         query["category.slug"] = category
+    
+#     # Filter by author
+#     if author:
+#         try:
+#             author_id = PyObjectId(author)
+#             query["author_id"] = author_id
+#         except:
+#             # Try to find author by username
+#             author_obj = await db.users.find_one({"username": author})
+#             if author_obj:
+#                 query["author_id"] = author_obj["_id"]
+#             else:
+#                 return []
+    
+#     # Filter by tag
+#     if tag:
+#         query["tags"] = tag
+    
+#     # Filter by featured status
+#     if featured is not None:
+#         query["featured"] = featured
+    
+#     # Only show published articles
+#     if published_only:
+#         query["published_at"] = {"$ne": None}
+    
+#     articles = []
+#     cursor = db.articles.find(query).skip(skip).limit(limit).sort("created_at", -1)
+    
+#     async for document in cursor:
+#         articles.routerend(document)
+    
+#     return articles
+
+@router.get("/", response_model=List[Dict[str, Any]])
 async def read_articles(
     category: Optional[str] = None,
     author: Optional[str] = None,
@@ -164,44 +215,88 @@ async def read_articles(
     limit: int = 20,
     db = Depends(get_db)
 ):
-    query = {}
-    
-    # Filter by category
-    if category:
-        query["category.slug"] = category
-    
-    # Filter by author
-    if author:
-        try:
-            author_id = PyObjectId(author)
-            query["author_id"] = author_id
-        except:
-            # Try to find author by username
-            author_obj = await db.users.find_one({"username": author})
-            if author_obj:
-                query["author_id"] = author_obj["_id"]
+    """Get a list of articles with optional filtering"""
+    try:
+        # Build query filter
+        query = {}
+        
+        # Filter by category
+        if category:
+            if ObjectId.is_valid(category):
+                query["category_id"] = ObjectId(category)
             else:
-                return []
+                # Find category by slug
+                category_obj = await db.categories.find_one({"slug": category})
+                if category_obj:
+                    query["category_id"] = category_obj["_id"]
+                else:
+                    return []
+        
+        # Filter by author
+        if author:
+            if ObjectId.is_valid(author):
+                query["author_id"] = ObjectId(author)
+            else:
+                # Find author by username
+                author_obj = await db.users.find_one({"username": author})
+                if author_obj:
+                    query["author_id"] = author_obj["_id"]
+                else:
+                    return []
+        
+        # Filter by tag
+        if tag:
+            query["tags"] = tag
+        
+        # Filter by featured status
+        if featured is not None:
+            query["featured"] = featured
+        
+        # Only show published articles
+        # if published_only:
+        #     query["published_at"] = {"$ne": None}
+        
+        # Fetch articles
+        cursor = db.articles.find(query).sort("created_at", -1).skip(skip).limit(limit)
+        
+        articles = []
+        async for article in cursor:
+            # Get the related category
+            category_data = None
+            if "category_id" in article:
+                category_data = await db.categories.find_one({"_id": article["category_id"]})
+            
+            # Get the related author (with limited fields)
+            author_data = None
+            if "author_id" in article:
+                author_data = await db.users.find_one(
+                    {"_id": article["author_id"]},
+                    projection={
+                        "_id": 1,
+                        "username": 1,
+                        "first_name": 1,
+                        "last_name": 1,
+                        "profile_picture_base64": 1
+                    }
+                )
+            
+            # Build response
+            article_with_relations = prepare_mongo_document({
+                **article,
+                "category": category_data,
+                "author": author_data
+            })
+            
+            articles.append(article_with_relations)
+        
+        return articles
     
-    # Filter by tag
-    if tag:
-        query["tags"] = tag
-    
-    # Filter by featured status
-    if featured is not None:
-        query["featured"] = featured
-    
-    # Only show published articles
-    if published_only:
-        query["published_at"] = {"$ne": None}
-    
-    articles = []
-    cursor = db.articles.find(query).skip(skip).limit(limit).sort("created_at", -1)
-    
-    async for document in cursor:
-        articles.routerend(document)
-    
-    return articles
+    except Exception as e:
+        print(f"Error in read_articles: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred: {str(e)}"
+        )
 
 @router.get("/{article_id}", response_model=ArticleInDB)
 async def read_article(article_id: str, db = Depends(get_db)):
