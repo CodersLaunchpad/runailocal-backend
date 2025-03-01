@@ -338,6 +338,31 @@ async def get_user_by_id(
         raise HTTPException(status_code=404, detail="User not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid user ID")
+    
+@router.get("/", response_model=List[UserInDB])
+async def get_all_users(
+    current_user: UserInDB = Depends(get_admin_user),
+    db = Depends(get_db)
+):
+    # Check if current user has admin privileges
+    # if not current_user.get("is_admin", False):
+    #     raise HTTPException(
+    #         status_code=403, 
+    #         detail="Not authorized. Admin privileges required."
+    #     )
+    
+    try:
+        # Fetch all users from the database
+        users_cursor = db.users.find({})
+        users = await users_cursor.to_list(length=None)
+        
+        # Transform the documents to proper format
+        return [prepare_mongo_document(user) for user in users]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch users: {str(e)}"
+        )
 
 @router.put("/{user_id}", response_model=UserInDB)
 async def admin_update_user(
