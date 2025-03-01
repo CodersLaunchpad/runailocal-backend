@@ -298,32 +298,89 @@ async def read_articles(
             detail=f"An error occurred: {str(e)}"
         )
 
-@router.get("/{article_id}", response_model=ArticleInDB)
-async def read_article(article_id: str, db = Depends(get_db)):
+# @router.get("/{article_id}", response_model=ArticleInDB)
+# async def read_article(article_id: str, db = Depends(get_db)):
+#     try:
+#         object_id = PyObjectId(article_id)
+#         article = await db.articles.find_one({"_id": object_id})
+        
+#         if article:
+#             # Check if article is published
+#             if article.get("published_at") is None:
+#                 raise HTTPException(status_code=404, detail="Article not found or not published")
+            
+#             return article
+        
+#         raise HTTPException(status_code=404, detail="Article not found")
+#     except:
+#         # Try to find by slug
+#         article = await db.articles.find_one({"slug": article_id})
+        
+#         if article:
+#             # Check if article is published
+#             if article.get("published_at") is None:
+#                 raise HTTPException(status_code=404, detail="Article not found or not published")
+            
+#             return article
+        
+#         raise HTTPException(status_code=404, detail="Article not found")
+    
+@router.get("/{id_or_slug}", response_model=Dict[str, Any])
+async def read_article(
+    id_or_slug: str,
+    published_only: bool = True,
+    db = Depends(get_db)
+):
+    """Get a single article by ID or slug"""
     try:
-        object_id = PyObjectId(article_id)
-        article = await db.articles.find_one({"_id": object_id})
+        # Check if the id_or_slug is a valid ObjectId
+        if ObjectId.is_valid(id_or_slug):
+            # Search by ID
+            query = {"_id": ObjectId(id_or_slug)}
+        else:
+            # Search by slug
+            query = {"slug": id_or_slug}
         
-        if article:
-            # Check if article is published
-            if article.get("published_at") is None:
-                raise HTTPException(status_code=404, detail="Article not found or not published")
-            
-            return article
+        # Apply published filter if needed
+        # if published_only:
+        #     query["published_at"] = {"$ne": None}
         
-        raise HTTPException(status_code=404, detail="Article not found")
-    except:
-        # Try to find by slug
-        article = await db.articles.find_one({"slug": article_id})
+        # Find the article
+        article = await db.articles.find_one(query)
         
-        if article:
-            # Check if article is published
-            if article.get("published_at") is None:
-                raise HTTPException(status_code=404, detail="Article not found or not published")
-            
-            return article
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
         
-        raise HTTPException(status_code=404, detail="Article not found")
+        # Get the related category
+        category_data = None
+        if "category_id" in article:
+            category_data = await db.categories.find_one({"_id": article["category_id"]})
+        
+        # Get the related author
+        author_data = None
+        if "author_id" in article:
+            author_data = await db.users.find_one(
+                {"_id": article["author_id"]},
+                projection={
+                    "_id": 1,
+                    "username": 1,
+                    "first_name": 1,
+                    "last_name": 1,
+                    "profile_picture_base64": 1
+                }
+            )
+        
+        # Build response with prepare_mongo_document to handle ObjectId conversion
+        article_with_relations = prepare_mongo_document({
+            **article,
+            "category": category_data if category_data else None,
+            "author": author_data if author_data else None
+        })
+        
+        return article_with_relations
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{article_id}", response_model=ArticleInDB)
 async def update_article(
