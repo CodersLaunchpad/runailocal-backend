@@ -602,24 +602,20 @@ async def get_user_statistics(
     - MongoDB ObjectId
     - Username (case insensitive)
     """
+    
     try:
-        # Try to find user by ID first
-        user = None
-        try:
-            # Try to convert the identifier to ObjectId
-            object_id = ensure_object_id(user_identifier)
-            user = await db.users.find_one({"_id": object_id})
-        except:
-            # If conversion fails, it's not a valid ObjectId
-            pass
+        # Check if the identifier is a valid ObjectId
+        if ObjectId.is_valid(user_identifier):
+            # Search by ID
+            query = {"_id": ObjectId(user_identifier)}
+        else:
+            # Search by username (case insensitive)
+            query = {"username": {"$regex": f"^{user_identifier}$", "$options": "i"}}
         
-        # If user not found by ID, try searching by username (case insensitive)
-        if not user:
-            # Convert username to lowercase for case-insensitive search
-            lowercase_identifier = user_identifier.lower()
-            user = await db.users.find_one({"username_lower": lowercase_identifier})
+        # Find the user with the query
+        user = await db.users.find_one(query)
             
-        # If still not found, raise 404
+        # If not found, raise 404
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
