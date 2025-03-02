@@ -94,6 +94,8 @@ try:
     # Create frequently used objects from settings
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+    # Optional token scheme that doesn't raise an exception for missing Authorization header
+    oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
     
     # Make settings available for import
     DATABASE_URL = settings.DATABASE_URL

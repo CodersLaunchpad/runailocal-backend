@@ -5,10 +5,10 @@ import random
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, prepare_mongo_document
-from helpers.auth import create_access_token, get_password_hash, get_current_active_user, get_admin_user
+from helpers.auth import create_access_token, get_current_user_optional, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
 from PIL import Image, ImageDraw, ImageFont
@@ -588,7 +588,7 @@ async def get_following(
 @router.get("/user/{user_identifier}/stats", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
 async def get_user_statistics(
     user_identifier: str,
-    current_user: UserInDB = Depends(get_current_active_user),
+    current_user: Optional[UserInDB] = Depends(get_current_user_optional),
     db = Depends(get_db)
 ):
     """
@@ -601,8 +601,12 @@ async def get_user_statistics(
     The user can be identified by either:
     - MongoDB ObjectId
     - Username (case insensitive)
-    """
     
+    Authentication is optional. If a current_user is provided, the "is_following" field
+    will reflect whether the current user follows the requested user.
+    """
+    from bson.objectid import ObjectId
+    from typing import Optional
     try:
         # Check if the identifier is a valid ObjectId
         if ObjectId.is_valid(user_identifier):
@@ -619,8 +623,7 @@ async def get_user_statistics(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Get user's ObjectId for subsequent queries
-        object_id = user["_id"]
+        # User's ObjectId is already available in user["_id"]
         
         # Get follower and following counts
         followers = user.get("followers", [])
@@ -629,7 +632,7 @@ async def get_user_statistics(
         following_count = len(following)
         
         # Get all articles written by this user
-        articles_cursor = db.articles.find({"user_id": object_id})
+        articles_cursor = db.articles.find({"user_id": user["_id"]})
         articles = await articles_cursor.to_list(length=100)  # Limit to 100 articles
         
         # Count total articles
@@ -671,9 +674,10 @@ async def get_user_statistics(
         
         # Check if current user is following this user
         is_following = False
-        if str(current_user.id) != str(object_id):  # Don't check if viewing own profile
-            current_user_object_id = ensure_object_id(str(current_user.id))
-            is_following = current_user_object_id in [ensure_object_id(str(f_id)) for f_id in followers]
+        if current_user and str(current_user.id) != str(user["_id"]):
+            # Only perform this check if a current_user is provided and not viewing own profile
+            current_user_object_id = ObjectId(str(current_user.id))
+            is_following = current_user_object_id in [ObjectId(str(f_id)) for f_id in followers]
         
         # Build response
         user_stats = {

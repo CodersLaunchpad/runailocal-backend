@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from db.db import get_db
-from config import oauth2_scheme, pwd_context, JWT_SECRET_KEY, JWT_ALGORITHM
+from config import oauth2_scheme, pwd_context, JWT_SECRET_KEY, JWT_ALGORITHM, oauth2_scheme_optional
 from models.models import UserInDB, TokenData, object_id_to_str
 
 def get_password_hash(password):
@@ -88,3 +88,18 @@ async def get_author_user(current_user: UserInDB = Depends(get_current_active_us
             detail="Not enough permissions"
         )
     return current_user
+
+async def get_current_user_optional(
+    token: str = Depends(oauth2_scheme_optional)
+) -> Optional[UserInDB]:
+    """
+    Similar to get_current_user but returns None instead of raising an exception
+    when the token is missing or invalid.
+    """
+    if not token:
+        return None
+    
+    try:
+        return await get_current_user(token)
+    except HTTPException:
+        return None
