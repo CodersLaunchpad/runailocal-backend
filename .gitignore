@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+mongo/backup/admin
+mongo/backup/cms
+
 # C extensions
 *.so
 
