@@ -457,19 +457,19 @@ async def update_article(
  """
 
 # @router.get("/home")
-@router.get("/testing", response_model=Dict[str, Any])
-async def get_home_page_articles(
-    db = Depends(get_db)
-):
-    try:
-        print("Going to get all the articles")
-        return {"testing": "foobar"}
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Detailed error: {error_details}")
-        print(f"Detailed error: {error_details}")
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.get("/home/", response_model=Dict[str, Any])
+# async def get_home_page_articles(
+#     db = Depends(get_db)
+# ):
+#     try:
+#         print("Going to get all the articles")
+#         return {"testing": "foobar"}
+#     except Exception as e:
+#         import traceback
+#         error_details = traceback.format_exc()
+#         print(f"Detailed error: {error_details}")
+#         print(f"Detailed error: {error_details}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # 2. Edit article route - admins can edit all, users can edit their own
 @router.put("/{id}", response_model=Dict[str, Any])
@@ -594,14 +594,14 @@ async def update_article(
 
     
 # Route for home page content
-# @router.get("/home", response_model=Dict[str, Any])
-# async def get_home_page_articles(
-#     # db = Depends(get_db)
-# ):
-#     """Get articles for the home page - spotlighted, popular, and by category"""
-#     try:
-#         print("Going to get all the articles")
-#         return {"testing" : "foobar"}
+@router.get("/home/", response_model=Dict[str, Any])
+async def get_home_page_articles(
+    db = Depends(get_db)
+):
+    """Get articles for the home page - spotlighted, popular, and by category"""
+    try:
+        print("Going to get all the articles")
+        # return {"testing" : "foobar"}
         result = {}
         
         # 1. Get spotlighted articles (max 3)
