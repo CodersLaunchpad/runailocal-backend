@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 import uvicorn
 
-from db.db import init_db, close_db_connection
+from db.db import init_db, close_db_connection, init_object_storage
 from routes.routes import setup_routes
 from logger.logger import logger
 
@@ -28,6 +28,7 @@ async def startup_db_client():
      # Validation can be done here too if needed
     logger.info("Starting up application")
     await init_db()
+    await init_object_storage()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

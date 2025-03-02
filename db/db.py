@@ -14,9 +14,13 @@ from logger.logger import logger
 import asyncio
 from typing import Optional
 
+from minio import Minio
+from config import MINIO_USERNAME, MINIO_PASSWORD, MINIO_SERVER, MINIO_BUCKET
+
 # Global client with connection pool
 client: Optional[AsyncIOMotorClient] = None
 db = None
+minio_client = None
 
 async def init_db():
     """Initialize database connection with retries"""
@@ -87,3 +91,40 @@ async def close_db_connection():
         client = None
         logger.info("DB connection closed")
 
+async def init_object_storage(secure=False):
+
+    """Initialize object storage connection"""
+    global minio_client
+
+    minio_client = Minio(
+        MINIO_SERVER,  # MinIO server address
+        access_key=MINIO_USERNAME,
+        secret_key=MINIO_PASSWORD,
+        secure=secure  # Use False for HTTP, True for HTTPS
+    )
+
+    # Create a bucket if it doesn't exist
+    bucket_name = MINIO_BUCKET
+    found = minio_client.bucket_exists(bucket_name)
+    if not found:
+        minio_client.make_bucket(bucket_name)
+        print(f"Bucket '{bucket_name}' created")
+    else:
+        print(f"Bucket '{bucket_name}' already exists")
+
+async def get_object_storage():
+    """
+    Dependency function to get object storage connection.
+    For use with FastAPI Depends().
+    """
+    if minio_client is None:
+        # Try to initialize if not already connected
+        await init_object_storage()
+        
+    if minio_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Object storage service unavailable"
+        )
+        
+    return minio_client

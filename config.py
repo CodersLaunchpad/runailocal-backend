@@ -16,7 +16,11 @@ class Settings:
     REQUIRED_CONFIGS = [
         "DATABASE_URL",
         "DATABASE_NAME",
-        "JWT_SECRET_KEY"
+        "JWT_SECRET_KEY",
+        "MINIO_USERNAME",
+        "MINIO_PASSWORD",
+        "MINIO_SERVER",
+        "MINIO_BUCKET"
     ]
     
     # Define config with default values and types (None means required with no default)
@@ -33,6 +37,11 @@ class Settings:
         "DB_RECONNECT_DELAY": (5, int),  # seconds
         "DB_SERVER_SELECTION_TIMEOUT_MS": (5000, int),
         "DB_CONNECT_TIMEOUT_MS": (5000, int),
+        # MinIO settings
+        "MINIO_USERNAME": (None, str),
+        "MINIO_PASSWORD": (None, str),
+        "MINIO_SERVER": (None, str),
+        "MINIO_BUCKET": (None, str)
     }
     
     def __init__(self):
@@ -99,6 +108,12 @@ try:
     DB_RECONNECT_DELAY = settings.DB_RECONNECT_DELAY
     DB_SERVER_SELECTION_TIMEOUT_MS = settings.DB_SERVER_SELECTION_TIMEOUT_MS
     DB_CONNECT_TIMEOUT_MS = settings.DB_CONNECT_TIMEOUT_MS
+
+    # MINIO Settings
+    MINIO_USERNAME = settings.MINIO_USERNAME
+    MINIO_PASSWORD = settings.MINIO_PASSWORD
+    MINIO_SERVER = settings.MINIO_SERVER
+    MINIO_BUCKET = settings.MINIO_BUCKET
     
 except ConfigError as e:
     # Print error and exit
