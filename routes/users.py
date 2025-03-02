@@ -416,28 +416,33 @@ async def delete_user(
         raise HTTPException(status_code=400, detail="Invalid user ID")
     
 # Following authors
-@router.post("/follow/{author_id}", status_code=status.HTTP_200_OK)
+@router.post("/follow/{author_identifier}", status_code=status.HTTP_200_OK)
 async def follow_author(
-    author_id: str,
+    author_identifier: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
     try:
-        # Convert the string ID to PyObjectId
-        object_id = ensure_object_id(author_id)
-        print(f"Author ID to follow: {author_id}, Object ID: {object_id}")
-        print("current user: ", current_user)
-
-        # Check if author exists and is actually an author
-        # author = await db.users.find_one({"_id": object_id, "user_details.type": "author"})
-        # TODO: figure out author controls later
-        author = await db.users.find_one({"_id": object_id})
+        # First determine if author_identifier is an ID or username
+        
+        # Find the author by ID or username
+        if ObjectId.is_valid(author_identifier):
+            # Search by ID
+            author = await db.users.find_one({"_id": ObjectId(author_identifier)})
+            print(f"Looking up author by ID: {author_identifier}")
+        else:
+            # Search by username (case insensitive)
+            author = await db.users.find_one({"username": {"$regex": f"^{author_identifier}$", "$options": "i"}})
+            print(f"Looking up author by username: {author_identifier}")
+            
         if not author:
             raise HTTPException(status_code=404, detail="Author not found")
+            
+        # Get the author's ObjectId
+        object_id = author["_id"]
+        print(f"Found author: {author.get('username', 'Unknown')}, ID: {object_id}")
 
-        print(f"Found author: {author.get('username', 'Unknown')}")
-
-        # Convert current user's following list to PyObjectId objects for comparison
+        # Convert current user's following list to ObjectId objects for comparison
         following_ids = [ensure_object_id(str(_id)) for _id in current_user.following]
         
         # Convert the user ID to ObjectId for comparison
@@ -498,30 +503,35 @@ async def follow_author(
                     raise HTTPException(status_code=500, detail="Failed to update following list")
             else:
                 return {"status": "info", "message": "Already following this author"}
-    # except InvalidId:
-    #     # MongoDB's InvalidId exception for malformed ObjectIds
-    #     raise HTTPException(status_code=400, detail="Invalid author ID format")
     except Exception as e:
         print(f"Error following author: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-        
-@router.post("/unfollow/{author_id}", status_code=status.HTTP_200_OK)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")      
+      
+@router.post("/unfollow/{author_identifier}", status_code=status.HTTP_200_OK)
 async def unfollow_author(
-    author_id: str,
+    author_identifier: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
     try:
-        # Convert the string ID to ObjectId
-        object_id = ensure_object_id(author_id)
-        print(f"Author ID to unfollow: {author_id}, Object ID: {object_id}")
+        # First determine if author_identifier is an ID or username
         
-        # Check if author exists
-        author = await db.users.find_one({"_id": object_id})
+        # Find the author by ID or username
+        if ObjectId.is_valid(author_identifier):
+            # Search by ID
+            author = await db.users.find_one({"_id": ObjectId(author_identifier)})
+            print(f"Looking up author by ID: {author_identifier}")
+        else:
+            # Search by username (case insensitive)
+            author = await db.users.find_one({"username": {"$regex": f"^{author_identifier}$", "$options": "i"}})
+            print(f"Looking up author by username: {author_identifier}")
+            
         if not author:
             raise HTTPException(status_code=404, detail="Author not found")
             
-        print(f"Found author: {author.get('username', 'Unknown')}")
+        # Get the author's ObjectId
+        object_id = author["_id"]
+        print(f"Found author: {author.get('username', 'Unknown')}, ID: {object_id}")
         
         # Ensure the user ID is properly converted to ObjectId
         user_object_id = ensure_object_id(str(current_user.id))
@@ -570,7 +580,7 @@ async def unfollow_author(
     except Exception as e:
         print(f"Error unfollowing author: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
+        
 @router.get("/me/following", response_model=List[UserInDB])
 async def get_following(
     current_user: UserInDB = Depends(get_current_active_user),
