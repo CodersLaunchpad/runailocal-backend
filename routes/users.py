@@ -585,9 +585,9 @@ async def get_following(
     
     return following_users
 
-@router.get("/user/{user_id}/stats", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+@router.get("/user/{user_identifier}/stats", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
 async def get_user_statistics(
-    user_id: str,
+    user_identifier: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
@@ -597,15 +597,34 @@ async def get_user_statistics(
     - Following count
     - Number of articles published
     - Additional engagement metrics
+    
+    The user can be identified by either:
+    - MongoDB ObjectId
+    - Username (case insensitive)
     """
     try:
-        # Convert the string ID to ObjectId
-        object_id = ensure_object_id(user_id)
+        # Try to find user by ID first
+        user = None
+        try:
+            # Try to convert the identifier to ObjectId
+            object_id = ensure_object_id(user_identifier)
+            user = await db.users.find_one({"_id": object_id})
+        except:
+            # If conversion fails, it's not a valid ObjectId
+            pass
         
-        # Find the user
-        user = await db.users.find_one({"_id": object_id})
+        # If user not found by ID, try searching by username (case insensitive)
+        if not user:
+            # Convert username to lowercase for case-insensitive search
+            lowercase_identifier = user_identifier.lower()
+            user = await db.users.find_one({"username_lower": lowercase_identifier})
+            
+        # If still not found, raise 404
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user's ObjectId for subsequent queries
+        object_id = user["_id"]
         
         # Get follower and following counts
         followers = user.get("followers", [])
@@ -656,7 +675,7 @@ async def get_user_statistics(
         
         # Check if current user is following this user
         is_following = False
-        if str(current_user.id) != user_id:  # Don't check if viewing own profile
+        if str(current_user.id) != str(object_id):  # Don't check if viewing own profile
             current_user_object_id = ensure_object_id(str(current_user.id))
             is_following = current_user_object_id in [ensure_object_id(str(f_id)) for f_id in followers]
         
@@ -674,6 +693,7 @@ async def get_user_statistics(
             "articles": article_list,
             "is_following": is_following,
             "joined_date": user.get("created_at", ""),
+            "profile_picture_base64": user.get("profile_picture_base64", ""),
             # Include additional stats as needed
         }
         
