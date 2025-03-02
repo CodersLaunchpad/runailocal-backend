@@ -713,6 +713,92 @@ async def get_home_page_articles(
         print(f"Error getting homepage articles: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# 3. Request article publish route - only for authors
+@router.post("/{id}/request-publish", status_code=200)
+async def request_article_publish(
+    id: str,
+    current_user = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """Request to publish an article (only for article authors)"""
+    try:
+        # Check if user is authenticated
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Validate ID
+        if not ObjectId.is_valid(id):
+            raise HTTPException(status_code=400, detail="Invalid article ID")
+        
+        # Get the article
+        article_id = ObjectId(id)
+        article = await db.articles.find_one({"_id": article_id})
+        
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        # raise HTTPException(status_code=404, detail="Testing route logic")
+
+        # Get user_id based on whether current_user is a dict or object
+        if isinstance(current_user, dict):
+            user_id = current_user.get("_id") or current_user.get("id")
+        else:
+            user_id = current_user.id
+        
+        # Check if user is the author
+        if str(article["author_id"]) != str(user_id):
+            raise HTTPException(status_code=403, detail="Only the author can request publication")
+        
+        # Check if article is already published or pending
+        if article.get("status") in ["pending", "published"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Article is already in {article.get('status')} status"
+            )
+        
+        print("going to try updating the article now")
+        
+        # Update article status to pending
+        await db.articles.update_one(
+            {"_id": article_id},
+            {
+                "$set": {
+                    "status": "pending",
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Get updated article
+        updated_article = await db.articles.find_one({"_id": article_id})
+        
+        # Get related data
+        category_data = None
+        if "category_id" in updated_article:
+            category_data = await db.categories.find_one({"_id": updated_article["category_id"]})
+        
+        author_data = await db.users.find_one(
+            {"_id": updated_article["author_id"]},
+            projection={
+                "_id": 1,
+                "username": 1,
+                "first_name": 1,
+                "last_name": 1,
+                "profile_picture_base64": 1
+            }
+        )
+        
+        # Return updated article with relations
+        return prepare_mongo_document({
+            **updated_article,
+            "category": category_data,
+            "author": author_data
+        })
+        
+    except Exception as e:
+        print(f"Error in request publish: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_article(
     article_id: str,
