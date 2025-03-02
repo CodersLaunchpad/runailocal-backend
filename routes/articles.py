@@ -114,6 +114,9 @@ async def create_article(
         article_doc = article.model_dump(exclude={"category_id", "author_id"})
         article_doc["category_id"] = category_id
         article_doc["author_id"] = author_id
+
+        # TODO: Publishing stats and stuff
+        # article_doc["published"] = False
         
         # Add additional fields
         article_doc["created_at"] = datetime.utcnow()
@@ -382,7 +385,7 @@ async def read_article(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/{article_id}", response_model=ArticleInDB)
+""" @router.put("/{article_id}", response_model=ArticleInDB)
 async def update_article(
     article_id: str,
     article_update: ArticleUpdate,
@@ -451,6 +454,127 @@ async def update_article(
         raise HTTPException(status_code=404, detail="Article not found")
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
+ """
+
+# 2. Edit article route - admins can edit all, users can edit their own
+@router.put("/{id}", response_model=Dict[str, Any])
+async def update_article(
+    id: str,
+    article_update: ArticleUpdate,
+    current_user = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """Update an article (admins can edit all, users can only edit their own)"""
+    try:
+        # Check if user is authenticated
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Validate ID
+        if not ObjectId.is_valid(id):
+            raise HTTPException(status_code=400, detail="Invalid article ID")
+        
+        # Get the article
+        article_id = ObjectId(id)
+        article = await db.articles.find_one({"_id": article_id})
+        
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        # print("current user details: ", current_user)
+        print("current user type: ", current_user.user_type)
+        # print("current user type: ", current_user["user_type"])
+        
+        # Check permissions
+        # is_admin = current_user["user_type"] == "admin"
+        # is_admin = current_user.user_type == "admin"
+        # is_author = str(article["author_id"]) == str(current_user["_id"])
+        is_admin = current_user.user_type == "admin"  # ✅ Correct access
+        is_author = str(article["author_id"]) == str(current_user.id)  # ✅ Use .id instead of ["_id"]
+        
+        if not (is_admin or is_author):
+            raise HTTPException(status_code=403, detail="You don't have permission to edit this article")
+        
+        # Prepare update data
+        update_data = {k: v for k, v in article_update.dict(exclude_unset=True).items() if v is not None}
+        
+        # If slug is being updated, check uniqueness
+        if "slug" in update_data:
+            existing = await db.articles.find_one({"slug": update_data["slug"], "_id": {"$ne": article_id}})
+            if existing:
+                raise HTTPException(status_code=400, detail="Slug already exists")
+        
+        # Handle category ID conversion
+        if "category_id" in update_data and update_data["category_id"]:
+            if not ObjectId.is_valid(update_data["category_id"]):
+                raise HTTPException(status_code=400, detail="Invalid category ID")
+            category = await db.categories.find_one({"_id": ObjectId(update_data["category_id"])})
+            if not category:
+                raise HTTPException(status_code=404, detail="Category not found")
+            update_data["category_id"] = ObjectId(update_data["category_id"])
+        
+        # If no data to update, return the current article
+        if not update_data:
+            # Get updated article with relations
+            category_data = None
+            if "category_id" in article:
+                category_data = await db.categories.find_one({"_id": article["category_id"]})
+            
+            author_data = await db.users.find_one(
+                {"_id": article["author_id"]},
+                projection={
+                    "_id": 1,
+                    "username": 1,
+                    "first_name": 1,
+                    "last_name": 1,
+                    "profile_picture_base64": 1
+                }
+            )
+            
+            return prepare_mongo_document({
+                **article,
+                "category": category_data,
+                "author": author_data
+            })
+        
+        # Add updated_at timestamp
+        update_data["updated_at"] = datetime.utcnow()
+        
+        # Update the article
+        await db.articles.update_one(
+            {"_id": article_id},
+            {"$set": update_data}
+        )
+        
+        # Get updated article
+        updated_article = await db.articles.find_one({"_id": article_id})
+        
+        # Get related data
+        category_data = None
+        if "category_id" in updated_article:
+            category_data = await db.categories.find_one({"_id": updated_article["category_id"]})
+        
+        author_data = await db.users.find_one(
+            {"_id": updated_article["author_id"]},
+            projection={
+                "_id": 1,
+                "username": 1,
+                "first_name": 1,
+                "last_name": 1,
+                "profile_picture_base64": 1
+            }
+        )
+        
+        # Return updated article with relations
+        return prepare_mongo_document({
+            **updated_article,
+            "category": category_data,
+            "author": author_data
+        })
+        
+    except Exception as e:
+        print(f"Error updating article: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_article(

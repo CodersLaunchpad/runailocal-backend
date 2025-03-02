@@ -300,9 +300,10 @@ class ArticleInDB(ArticleBase):
 class ArticleUpdate(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
-    body: Optional[str] = None
+    # body: Optional[str] = None
+    content: Optional[str] = None
     summary: Optional[str] = None
-    category: Optional[Dict[str, Any]] = None
+    category: Optional[str] = None
     featured: Optional[bool] = None
     tags: Optional[List[str]] = None
     published_at: Optional[datetime] = None
@@ -310,6 +311,13 @@ class ArticleUpdate(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
+
+class ArticleStatusUpdate(BaseModel):
+    status: str = Field(..., description="Status can be: draft, pending, published, rejected")
+    featured: Optional[bool] = None
+    is_popular: Optional[bool] = None
+    is_spotlight: Optional[bool] = None
+    rejection_reason: Optional[str] = None
 
 class CommentCreate(BaseModel):
     text: str
