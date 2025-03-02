@@ -456,6 +456,21 @@ async def update_article(
         raise HTTPException(status_code=400, detail="Invalid article ID")
  """
 
+# @router.get("/home")
+@router.get("/testing", response_model=Dict[str, Any])
+async def get_home_page_articles(
+    db = Depends(get_db)
+):
+    try:
+        print("Going to get all the articles")
+        return {"testing": "foobar"}
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Detailed error: {error_details}")
+        print(f"Detailed error: {error_details}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # 2. Edit article route - admins can edit all, users can edit their own
 @router.put("/{id}", response_model=Dict[str, Any])
 async def update_article(
@@ -574,6 +589,128 @@ async def update_article(
         
     except Exception as e:
         print(f"Error updating article: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+    
+# Route for home page content
+# @router.get("/home", response_model=Dict[str, Any])
+# async def get_home_page_articles(
+#     # db = Depends(get_db)
+# ):
+#     """Get articles for the home page - spotlighted, popular, and by category"""
+#     try:
+#         print("Going to get all the articles")
+#         return {"testing" : "foobar"}
+        result = {}
+        
+        # 1. Get spotlighted articles (max 3)
+        spotlight_query = {"status": "published", "is_spotlight": True}
+        print(f"Spotlight query: {spotlight_query}")
+        # spotlight_cursor = db.articles.find(spotlight_query).sort("published_at", -1).limit(3)
+        # todo sort out all the published stuff
+        spotlight_cursor = db.articles.find(spotlight_query).sort("updated_at", -1).limit(3)
+        
+        spotlighted = []
+        async for article in spotlight_cursor:
+            # Get related data
+            category_data = None
+            if "category_id" in article:
+                category_data = await db.categories.find_one({"_id": article["category_id"]})
+            
+            author_data = await db.users.find_one(
+                {"_id": article["author_id"]},
+                projection={
+                    "_id": 1,
+                    "username": 1,
+                    "first_name": 1,
+                    "last_name": 1,
+                    "profile_picture_base64": 1
+                }
+            )
+            
+            spotlighted.append(prepare_mongo_document({
+                **article,
+                "category": category_data,
+                "author": author_data
+            }))
+        
+        result["spotlighted"] = spotlighted
+        
+        # 2. Get popular articles
+        popular_query = {"status": "published", "is_popular": True}
+        # popular_cursor = db.articles.find(popular_query).sort("published_at", -1).limit(6)
+        popular_cursor = db.articles.find(popular_query).sort("updated_at", -1).limit(6)
+        
+        popular = []
+        async for article in popular_cursor:
+            # Get related data
+            category_data = None
+            if "category_id" in article:
+                category_data = await db.categories.find_one({"_id": article["category_id"]})
+            
+            author_data = await db.users.find_one(
+                {"_id": article["author_id"]},
+                projection={
+                    "_id": 1,
+                    "username": 1,
+                    "first_name": 1,
+                    "last_name": 1,
+                    "profile_picture_base64": 1
+                }
+            )
+            
+            popular.append(prepare_mongo_document({
+                **article,
+                "category": category_data,
+                "author": author_data
+            }))
+        
+        result["popular"] = popular
+        
+        # 3. Get articles by category
+        # First get all categories
+        categories = await db.categories.find().to_list(length=100)
+        
+        by_category = {}
+        for category in categories:
+            cat_id = category["_id"]
+            cat_name = category["name"]
+            
+            # Get published articles in this category
+            cat_query = {"status": "published", "category_id": cat_id}
+            # cat_cursor = db.articles.find(cat_query).sort("published_at", -1).limit(4)
+            cat_cursor = db.articles.find(cat_query).sort("updated_at", -1).limit(4)
+            
+            cat_articles = []
+            async for article in cat_cursor:
+                # Get author data
+                author_data = await db.users.find_one(
+                    {"_id": article["author_id"]},
+                    projection={
+                        "_id": 1,
+                        "username": 1,
+                        "first_name": 1,
+                        "last_name": 1,
+                        "profile_picture_base64": 1
+                    }
+                )
+                
+                cat_articles.append(prepare_mongo_document({
+                    **article,
+                    "category": prepare_mongo_document(category),
+                    "author": author_data
+                }))
+            
+            if cat_articles:  # Only include categories with articles
+                by_category[cat_name] = cat_articles
+        
+        result["by_category"] = by_category
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error getting homepage articles: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
