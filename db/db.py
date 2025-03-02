@@ -96,6 +96,15 @@ async def init_object_storage(secure=False):
     """Initialize object storage connection"""
     global minio_client
 
+    # Remove the http:// or https:// prefix from the server address
+    server_address = MINIO_SERVER
+    if server_address.startswith("http://"):
+        server_address = server_address[7:]  # Remove 'http://'
+        secure = False
+    elif server_address.startswith("https://"):
+        server_address = server_address[8:]  # Remove 'https://'
+        secure = True
+
     minio_client = Minio(
         MINIO_SERVER,  # MinIO server address
         access_key=MINIO_USERNAME,
