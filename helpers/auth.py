@@ -15,10 +15,22 @@ def verify_password(plain_password, hashed_password):
 
 # async def get_user(username: str, db = Depends(get_db)):
 async def get_user(username: str, db=get_db()):
-    user = await db.users.find_one({"username": username})
+    """
+    Retrieve a user by username with case-insensitive matching.
+    
+    Args:
+        username: The username to search for (case-insensitive)
+        db: Database connection
+        
+    Returns:
+        UserInDB object if found, None otherwise
+    """
+    # Use a case-insensitive regex query to find the user
+    user = await db.users.find_one({"username": {"$regex": f"^{username}$", "$options": "i"}})
+    
     if user:
         user["_id"] = str(user["_id"])  # Convert ObjectId to string
-        # user["_id"] = object_id_to_str(user["_id"])  # Convert ObjectId to string
+    
     return UserInDB(**user) if user else None
 
 async def authenticate_user(username: str, password: str, db):
