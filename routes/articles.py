@@ -279,9 +279,18 @@ async def read_articles(
                         "username": 1,
                         "first_name": 1,
                         "last_name": 1,
-                        "profile_picture_base64": 1
-                    }
-                )
+                        "profile_picture_base64": 1,
+                    "followers": 1
+                }
+            )
+            
+            # Add follower_count to author data
+            if author_data and "followers" in author_data:
+                author_data["follower_count"] = len(author_data["followers"])
+                # Remove the followers array if you don't need the actual follower details
+                del author_data["followers"]
+            else:
+                author_data["follower_count"] = 0
             
             # Build response
             article_with_relations = prepare_mongo_document({
@@ -359,7 +368,7 @@ async def read_article(
         if "category_id" in article:
             category_data = await db.categories.find_one({"_id": article["category_id"]})
         
-        # Get the related author
+        # Get the related author with followers array
         author_data = None
         if "author_id" in article:
             author_data = await db.users.find_one(
@@ -369,9 +378,18 @@ async def read_article(
                     "username": 1,
                     "first_name": 1,
                     "last_name": 1,
-                    "profile_picture_base64": 1
+                    "profile_picture_base64": 1,
+                    "followers": 1
                 }
             )
+            
+            # Add follower_count to author data
+            if author_data and "followers" in author_data:
+                author_data["follower_count"] = len(author_data["followers"])
+                # Remove the followers array if you don't need the actual follower details
+                del author_data["followers"]
+            else:
+                author_data["follower_count"] = 0
         
         # Build response with prepare_mongo_document to handle ObjectId conversion
         article_with_relations = prepare_mongo_document({
