@@ -1036,21 +1036,54 @@ async def delete_bookmark_article(
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        # Remove article from user's bookmarks
-        result = await db.users.update_one(
-            {"_id": current_user.id},
+        # Ensure the user ID is properly converted to ObjectId
+        user_object_id = ensure_object_id(str(current_user.id))
+        
+        # Convert current user's bookmarks list to ObjectId objects for comparison
+        bookmark_ids = [ensure_object_id(str(_id)) for _id in current_user.bookmarks]
+        
+        # Check if article's bookmarked_by list exists and if user is in it
+        article_bookmarked_by = article.get('bookmarked_by', [])
+        article_bookmarked_by_ids = [ensure_object_id(str(_id)) for _id in article_bookmarked_by]
+        
+        # Check the state of the bookmark relationship
+        is_bookmarked = article_object_id in bookmark_ids
+        is_in_bookmarked_by = user_object_id in article_bookmarked_by_ids
+        
+        # No bookmark relationship exists
+        if not is_bookmarked and not is_in_bookmarked_by:
+            return {"status": "info", "message": "Article is not in your bookmarks"}
+            
+        # Prepare for updates - we'll attempt both sides regardless of current state
+        # to ensure consistency
+        
+        # Remove article from user's bookmarks list
+        user_result = await db.users.update_one(
+            {"_id": user_object_id},
             {"$pull": {"bookmarks": article_object_id}}
         )
         
-        if result.modified_count:
-            return {"status": "success", "message": "Article removed from bookmarks"}
+        # Remove user from article's bookmarked_by list
+        article_result = await db.articles.update_one(
+            {"_id": article_object_id},
+            {"$pull": {"bookmarked_by": user_object_id}}
+        )
+        
+        # Check results and return appropriate response
+        if user_result.modified_count and article_result.modified_count:
+            return {"status": "success", "message": "Article removed from bookmarks successfully"}
+        elif user_result.modified_count:
+            return {"status": "partial", "message": "Removed from your bookmarks, but couldn't update article's bookmarked_by list"}
+        elif article_result.modified_count:
+            return {"status": "partial", "message": "Removed from article's bookmarked_by list, but couldn't update your bookmarks"}
         else:
-            return {"status": "info", "message": "Article was not in bookmarks"}
+            # If nothing was modified despite the checks indicating a relationship existed
+            return {"status": "warning", "message": "No changes made to bookmark relationship"}
             
     except Exception as e:
         print(f"Error removing bookmark: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-
+        
 @router.get("/me/bookmarks", response_model=List[ArticleInDB])
 async def get_bookmarks(
     current_user: UserInDB = Depends(get_current_active_user),

@@ -166,7 +166,7 @@ class UserInDB(UserBase):
     bookmarks: List[PyObjectId] = []
 
     # Add validators to ensure ObjectId conversion in lists
-    @validator('following', 'favorites', 'followers', pre=True)
+    @validator('following', 'favorites', 'followers', 'bookmarks', pre=True)
     def convert_object_ids(cls, v):
         if isinstance(v, list):
             return [PyObjectId(x) for x in v]
