@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, prepare_mongo_document
+from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, clean_document, ensure_object_id, prepare_mongo_document
 from helpers.auth import create_access_token, get_current_user_optional, get_password_hash, get_current_active_user, get_admin_user
 from db.db import get_db
 from pymongo import ReturnDocument
@@ -113,7 +113,9 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
     if created_user and isinstance(created_user.get("_id"), ObjectId):
         created_user["_id"] = str(created_user["_id"])
 
-    return created_user
+    # return created_user
+    serializable_response = clean_document(prepare_mongo_document(create_user))
+    return JSONResponse(content=serializable_response)
 
 @router.post("/register", response_model=Token)
 async def register_user(user: UserCreate, db = Depends(get_db)):
@@ -455,7 +457,10 @@ async def read_users_me(
             "recent_bookmarks": bookmarks_list
         }
         
-        return user_data
+        # return user_data
+
+        serializable_response = clean_document(prepare_mongo_document(user_data))
+        return JSONResponse(content=serializable_response)
         
     except Exception as e:
         print(f"Error getting user profile data: {str(e)}")
@@ -491,9 +496,14 @@ async def update_user(
             return_document=ReturnDocument.AFTER
         )
         if updated_user:
-            return updated_user
+            # return updated_user
+            
+            serializable_response = clean_document(prepare_mongo_document(updated_user))
+            return JSONResponse(content=serializable_response)
     
-    return current_user
+    # return current_user
+    serializable_response = clean_document(prepare_mongo_document(current_user))
+    return JSONResponse(content=serializable_response)
 
 @router.get("/{user_id}", response_model=UserInDB)
 async def get_user_by_id(
@@ -507,7 +517,9 @@ async def get_user_by_id(
         # Let's try to find the document
         user = await db.users.find_one({"_id": object_id})
         if user:
-            return prepare_mongo_document(user)
+            # return prepare_mongo_document(user)
+            serializable_response = clean_document(prepare_mongo_document(user))
+            return JSONResponse(content=serializable_response)
         raise HTTPException(status_code=404, detail="User not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid user ID")
@@ -528,9 +540,11 @@ async def get_all_users(
         # Fetch all users from the database
         users_cursor = db.users.find({})
         users = await users_cursor.to_list(length=None)
-        
+        response_obj = [prepare_mongo_document(user) for user in users]
         # Transform the documents to proper format
-        return [prepare_mongo_document(user) for user in users]
+        # return [prepare_mongo_document(user) for user in users]
+        serializable_response = clean_document(response_obj)
+        return JSONResponse(content=serializable_response)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -555,7 +569,9 @@ async def admin_update_user(
                 return_document=ReturnDocument.AFTER
             )
             if updated_user:
-                return updated_user
+                # return updated_user
+                serializable_response = clean_document(prepare_mongo_document(updated_user))
+                return JSONResponse(content=serializable_response)
         
         raise HTTPException(status_code=404, detail="User not found")
     except:
@@ -766,7 +782,10 @@ async def get_following(
         if author:
             following_users.routerend(author)
     
-    return following_users
+    # return following_users
+    serializable_response = clean_document(prepare_mongo_document(following_users))
+    return JSONResponse(content=serializable_response)
+    
 
 @router.get("/user/{user_identifier}/stats", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
 async def get_user_statistics(
@@ -937,7 +956,9 @@ async def get_user_statistics(
             # Include additional stats as needed
         }
         
-        return user_stats
+        # return user_stats
+        serializable_response = clean_document(user_stats)
+        return JSONResponse(content=serializable_response)
         
     except Exception as e:
         print(f"Error getting user statistics: {str(e)}")

@@ -79,6 +79,18 @@ def prepare_mongo_document(doc):
         
     return result
 
+def clean_document(doc):
+    if isinstance(doc, dict):
+        return {k: clean_document(v) for k, v in doc.items()}
+    elif isinstance(doc, list):
+        return [clean_document(i) for i in doc]
+    elif isinstance(doc, ObjectId):
+        return str(doc)
+    elif isinstance(doc, datetime):
+        return doc.isoformat()
+    else:
+        return doc
+
 # Use Annotated to create a type that validates ObjectId strings
 PyObjectId = Annotated[str, Field(default_factory=lambda: str(ObjectId()))]
 

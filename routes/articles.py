@@ -4,7 +4,9 @@ from bson import ObjectId
 from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, Depends, UploadFile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from models.models import prepare_mongo_document
+
+from fastapi.responses import JSONResponse
+from models.models import clean_document, prepare_mongo_document
 from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
 from helpers.auth import get_current_active_user, get_admin_user, get_author_user
 from pymongo import ReturnDocument
@@ -301,7 +303,9 @@ async def read_articles(
             
             articles.append(article_with_relations)
         
-        return articles
+        # return articles
+        serializable_response = clean_document(articles)
+        return JSONResponse(content=serializable_response)
     
     except Exception as e:
         print(f"Error in read_articles: {str(e)}")
@@ -398,7 +402,10 @@ async def read_article(
             "author": author_data if author_data else None
         })
         
-        return article_with_relations
+        # return article_with_relations
+    
+        serializable_response = clean_document(article_with_relations)
+        return JSONResponse(content=serializable_response)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -599,11 +606,19 @@ async def update_article(
         )
         
         # Return updated article with relations
-        return prepare_mongo_document({
+        # return prepare_mongo_document({
+        #     **updated_article,
+        #     "category": category_data,
+        #     "author": author_data
+        # })
+        response_obj = prepare_mongo_document({
             **updated_article,
             "category": category_data,
             "author": author_data
         })
+        serializable_response = clean_document(response_obj)
+        return JSONResponse(content=serializable_response)
+    
         
     except Exception as e:
         print(f"Error updating article: {str(e)}")
@@ -753,8 +768,13 @@ async def get_home_page_articles(
                 by_category[cat_name] = cat_articles
         
         result["by_category"] = by_category
+
         
-        return result
+        
+        # return result
+        # return prepare_mongo_document(result)
+        serializable_response = clean_document(result)
+        return JSONResponse(content=serializable_response)
         
     except Exception as e:
         print(f"Error getting homepage articles: {str(e)}")
@@ -836,11 +856,18 @@ async def request_article_publish(
         )
         
         # Return updated article with relations
-        return prepare_mongo_document({
+        # return prepare_mongo_document({
+        #     **updated_article,
+        #     "category": category_data,
+        #     "author": author_data
+        # })
+        response_obj = prepare_mongo_document({
             **updated_article,
             "category": category_data,
             "author": author_data
         })
+        serializable_response = clean_document(response_obj)
+        return JSONResponse(content=serializable_response)
         
     except Exception as e:
         print(f"Error in request publish: {str(e)}")
