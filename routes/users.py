@@ -603,8 +603,8 @@ async def get_user_statistics(
 ):
     """
     Retrieve comprehensive statistics for a user including:
-    - Follower count
-    - Following count
+    - Follower count and list of followers with user details
+    - Following count and list of following with user details
     - Number of articles published
     - Additional engagement metrics
     
@@ -615,8 +615,7 @@ async def get_user_statistics(
     Authentication is optional. If a current_user is provided, the "is_following" field
     will reflect whether the current user follows the requested user.
     """
-    from bson.objectid import ObjectId
-    from typing import Optional
+    
     try:
         # Check if the identifier is a valid ObjectId
         if ObjectId.is_valid(user_identifier):
@@ -635,18 +634,74 @@ async def get_user_statistics(
         
         # User's ObjectId is already available in user["_id"]
         
+        # Get follower and following IDs
+        follower_ids = user.get("followers", [])
+        following_ids = user.get("following", [])
+        
+        # Convert string IDs to ObjectId if needed
+        follower_object_ids = [ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id for f_id in follower_ids]
+        following_object_ids = [ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id for f_id in following_ids]
+        
         # Get follower and following counts
-        followers = user.get("followers", [])
-        following = user.get("following", [])
-        follower_count = len(followers)
-        following_count = len(following)
+        follower_count = len(follower_ids)
+        following_count = len(following_ids)
+        
+        # Fetch follower details
+        followers_list = []
+        if follower_object_ids:
+            followers_cursor = db.users.find({"_id": {"$in": follower_object_ids}})
+            followers_data = await followers_cursor.to_list(length=None)
+            
+            for follower in followers_data:
+                # Check if current user is following this follower
+                is_following_follower = False
+                if current_user:
+                    current_user_object_id = ObjectId(str(current_user.id))
+                    is_following_follower = current_user_object_id in [
+                        ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id 
+                        for f_id in follower.get("followers", [])
+                    ]
+                
+                followers_list.append({
+                    "id": str(follower["_id"]),
+                    "username": follower.get("username", ""),
+                    "first_name": follower.get("first_name", ""),
+                    "last_name": follower.get("last_name", ""),
+                    "profile_picture_base64": follower.get("profile_picture_base64", ""),
+                    "is_following": is_following_follower
+                })
+        
+        # Fetch following details
+        following_list = []
+        if following_object_ids:
+            following_cursor = db.users.find({"_id": {"$in": following_object_ids}})
+            following_data = await following_cursor.to_list(length=None)
+            
+            for following_user in following_data:
+                # Check if current user is following this user
+                is_following_user = False
+                if current_user:
+                    current_user_object_id = ObjectId(str(current_user.id))
+                    is_following_user = current_user_object_id in [
+                        ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id 
+                        for f_id in following_user.get("followers", [])
+                    ]
+                
+                following_list.append({
+                    "id": str(following_user["_id"]),
+                    "username": following_user.get("username", ""),
+                    "first_name": following_user.get("first_name", ""),
+                    "last_name": following_user.get("last_name", ""),
+                    "profile_picture_base64": following_user.get("profile_picture_base64", ""),
+                    "is_following": is_following_user
+                })
         
         # Get all articles written by this user
+        article_count = await db.articles.count_documents({"user_id": user["_id"]})
+        
+        # Get article details (limited to 100) as in the original function
         articles_cursor = db.articles.find({"user_id": user["_id"]})
         articles = await articles_cursor.to_list(length=100)  # Limit to 100 articles
-        
-        # Count total articles
-        article_count = len(articles)
         
         # Process article data
         article_list = []
@@ -687,7 +742,7 @@ async def get_user_statistics(
         if current_user and str(current_user.id) != str(user["_id"]):
             # Only perform this check if a current_user is provided and not viewing own profile
             current_user_object_id = ObjectId(str(current_user.id))
-            is_following = current_user_object_id in [ObjectId(str(f_id)) for f_id in followers]
+            is_following = current_user_object_id in [ObjectId(str(f_id)) for f_id in follower_ids]
         
         # Build response
         user_stats = {
@@ -696,6 +751,8 @@ async def get_user_statistics(
             "last_name": user.get("last_name", ""),
             "follower_count": follower_count,
             "following_count": following_count,
+            "followers": followers_list,
+            "following": following_list,
             "article_count": article_count,
             "total_views": total_views,
             "total_likes": total_likes,
