@@ -660,7 +660,7 @@ async def get_home_page_articles(
             spotlighted.append(prepare_mongo_document({
                 **article,
                 "category": category_data,
-                "author": author_data
+                "author": prepare_mongo_document(author_data)
             }))
         
         result["spotlighted"] = spotlighted
@@ -701,7 +701,7 @@ async def get_home_page_articles(
             popular.append(prepare_mongo_document({
                 **article,
                 "category": category_data,
-                "author": author_data
+                "author": prepare_mongo_document(author_data)
             }))
         
         result["popular"] = popular
@@ -746,7 +746,7 @@ async def get_home_page_articles(
                 cat_articles.append(prepare_mongo_document({
                     **article,
                     "category": prepare_mongo_document(category),
-                    "author": author_data
+                    "author": prepare_mongo_document(author_data)
                 }))
             
             if cat_articles:  # Only include categories with articles
