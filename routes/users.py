@@ -302,6 +302,7 @@ async def read_users_me(
     
     Authentication is required.
     """
+    from bson.objectid import ObjectId
     
     try:
         # Get user ObjectId
@@ -326,12 +327,16 @@ async def read_users_me(
             followers_data = await followers_cursor.to_list(length=None)
             
             for follower in followers_data:
+                # Check if current user is following this follower (if they follow you back)
+                is_following_follower = ObjectId(str(follower["_id"])) in following_object_ids
+                
                 followers_list.append({
                     "id": str(follower["_id"]),
                     "username": follower.get("username", ""),
                     "first_name": follower.get("first_name", ""),
                     "last_name": follower.get("last_name", ""),
-                    "profile_picture_base64": follower.get("profile_picture_base64", "")
+                    "profile_picture_base64": follower.get("profile_picture_base64", ""),
+                    "is_following": is_following_follower
                 })
         
         # Fetch following details
@@ -341,12 +346,14 @@ async def read_users_me(
             following_data = await following_cursor.to_list(length=None)
             
             for following_user in following_data:
+                # For the /me endpoint, the current user is always following users in their following list
                 following_list.append({
                     "id": str(following_user["_id"]),
                     "username": following_user.get("username", ""),
                     "first_name": following_user.get("first_name", ""),
                     "last_name": following_user.get("last_name", ""),
-                    "profile_picture_base64": following_user.get("profile_picture_base64", "")
+                    "profile_picture_base64": following_user.get("profile_picture_base64", ""),
+                    "is_following": True
                 })
         
         # Get article statistics
@@ -451,7 +458,7 @@ async def read_users_me(
     except Exception as e:
         print(f"Error getting user profile data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-
+    
 # TODO: rename to get_user_favorites
 @router.get("/me/favorites", response_model=List[ArticleInDB])
 async def get_favorites(
