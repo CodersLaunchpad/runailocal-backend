@@ -958,30 +958,71 @@ async def bookmark_article(
             raise HTTPException(status_code=404, detail="Article not found")
         
         # Convert current user's bookmarks list to ObjectId objects for comparison
-        bookmarks = current_user.get('bookmarks', [])
+        bookmarks = getattr(current_user, 'bookmarks', [])
         bookmark_ids = [ensure_object_id(str(_id)) for _id in bookmarks]
         
-        # Check if already bookmarked
-        if article_object_id in bookmark_ids:
-            return {"status": "info", "message": "Article already bookmarked"}
+        # Convert the user ID to ObjectId for comparison
+        user_object_id = ensure_object_id(str(current_user.id))
         
-        # Update user's bookmarks list
-        result = await db.users.update_one(
-            {"_id": current_user.id},
-            {"$addToSet": {"bookmarks": article_object_id}}
-        )
+        # Check if article's bookmarked_by list exists and if user is already in it
+        article_bookmarked_by = article.get('bookmarked_by', [])
+        article_bookmarked_by_ids = [ensure_object_id(str(_id)) for _id in article_bookmarked_by]
         
-        if result.modified_count:
-            return {"status": "success", "message": "Article bookmarked successfully"}
+        # Check if already bookmarked (on both sides)
+        already_in_bookmarks = article_object_id in bookmark_ids
+        already_in_bookmarked_by = user_object_id in article_bookmarked_by_ids
+        
+        if not already_in_bookmarks and not already_in_bookmarked_by:
+            # Update user's bookmarks list
+            user_result = await db.users.update_one(
+                {"_id": ensure_object_id(str(current_user.id))},
+                {"$addToSet": {"bookmarks": article_object_id}}
+            )
+            
+            # Update the article's bookmarked_by list
+            article_result = await db.articles.update_one(
+                {"_id": article_object_id},
+                {"$addToSet": {"bookmarked_by": user_object_id}}
+            )
+            
+            if user_result.modified_count and article_result.modified_count:
+                return {"status": "success", "message": "Article bookmarked successfully"}
+            elif user_result.modified_count:
+                # If only the user was updated but not the article
+                return {"status": "partial", "message": "Added to your bookmarks, but couldn't update article's bookmarked_by list"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to update bookmarks/bookmarked_by lists")
         else:
-            raise HTTPException(status_code=500, detail="Failed to bookmark article")
+            # Handle different cases of partial relationship
+            if already_in_bookmarks and not already_in_bookmarked_by:
+                # Fix one-sided relationship by updating article's bookmarked_by
+                article_result = await db.articles.update_one(
+                    {"_id": article_object_id},
+                    {"$addToSet": {"bookmarked_by": user_object_id}}
+                )
+                if article_result.modified_count:
+                    return {"status": "fixed", "message": "Fixed one-sided bookmark relationship"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to update article's bookmarked_by list")
+            elif not already_in_bookmarks and already_in_bookmarked_by:
+                # Fix one-sided relationship by updating user's bookmarks
+                user_result = await db.users.update_one(
+                    {"_id": ensure_object_id(str(current_user.id))},
+                    {"$addToSet": {"bookmarks": article_object_id}}
+                )
+                if user_result.modified_count:
+                    return {"status": "fixed", "message": "Fixed one-sided bookmark relationship"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to update bookmarks list")
+            else:
+                return {"status": "info", "message": "Article already bookmarked"}
             
     except Exception as e:
         print(f"Error bookmarking article: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-
-@router.post("/unbookmark/{article_id}", status_code=status.HTTP_200_OK)
-async def unbookmark_article(
+        
+@router.delete("/bookmark/{article_id}", status_code=status.HTTP_200_OK)
+async def delete_bookmark_article(
     article_id: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)

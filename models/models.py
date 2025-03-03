@@ -186,7 +186,8 @@ class UserInDB(UserBase):
                 "created_at": "2023-01-01T00:00:00",
                 "user_details": {},
                 "favorites": [],
-                "following": []
+                "following": [],
+                "bookmarks": []
             }
         }
     }
@@ -297,6 +298,9 @@ class ArticleInDB(ArticleBase):
     comments: List[Dict[str, Any]] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
+    bookmarked_by: List[PyObjectId] = []
+
+    
 
 class ArticleUpdate(BaseModel):
     name: Optional[str] = None
