@@ -618,6 +618,7 @@ async def get_home_page_articles(
             if "category_id" in article:
                 category_data = await db.categories.find_one({"_id": article["category_id"]})
             
+            # Get author data including followers array
             author_data = await db.users.find_one(
                 {"_id": article["author_id"]},
                 projection={
@@ -625,9 +626,18 @@ async def get_home_page_articles(
                     "username": 1,
                     "first_name": 1,
                     "last_name": 1,
-                    "profile_picture_base64": 1
+                    "profile_picture_base64": 1,
+                    "followers": 1
                 }
             )
+            
+            # Add follower_count to author data
+            if author_data and "followers" in author_data:
+                author_data["follower_count"] = len(author_data["followers"])
+                # Remove the followers array if you don't need the actual follower details
+                del author_data["followers"]
+            else:
+                author_data["follower_count"] = 0
             
             spotlighted.append(prepare_mongo_document({
                 **article,
@@ -649,6 +659,7 @@ async def get_home_page_articles(
             if "category_id" in article:
                 category_data = await db.categories.find_one({"_id": article["category_id"]})
             
+            # Get author data including followers array
             author_data = await db.users.find_one(
                 {"_id": article["author_id"]},
                 projection={
@@ -656,9 +667,18 @@ async def get_home_page_articles(
                     "username": 1,
                     "first_name": 1,
                     "last_name": 1,
-                    "profile_picture_base64": 1
+                    "profile_picture_base64": 1,
+                    "followers": 1
                 }
             )
+            
+            # Add follower_count to author data
+            if author_data and "followers" in author_data:
+                author_data["follower_count"] = len(author_data["followers"])
+                # Remove the followers array if you don't need the actual follower details
+                del author_data["followers"]
+            else:
+                author_data["follower_count"] = 0
             
             popular.append(prepare_mongo_document({
                 **article,
@@ -684,7 +704,7 @@ async def get_home_page_articles(
             
             cat_articles = []
             async for article in cat_cursor:
-                # Get author data
+                # Get author data including followers array
                 author_data = await db.users.find_one(
                     {"_id": article["author_id"]},
                     projection={
@@ -692,9 +712,18 @@ async def get_home_page_articles(
                         "username": 1,
                         "first_name": 1,
                         "last_name": 1,
-                        "profile_picture_base64": 1
+                        "profile_picture_base64": 1,
+                        "followers": 1
                     }
                 )
+                
+                # Add follower_count to author data
+                if author_data and "followers" in author_data:
+                    author_data["follower_count"] = len(author_data["followers"])
+                    # Remove the followers array if you don't need the actual follower details
+                    del author_data["followers"]
+                else:
+                    author_data["follower_count"] = 0
                 
                 cat_articles.append(prepare_mongo_document({
                     **article,
