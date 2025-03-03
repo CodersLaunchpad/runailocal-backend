@@ -54,7 +54,7 @@ MinIO is an object storage server compatible with Amazon S3. Follow these steps 
 
 #### Windows
 
-1. Download the MinIO Server for Windows from the [official MinIO website](https://min.io/download)
+1. Download the MinIO Server for Windows from the [official MinIO website](https://min.io/open-source/download?platform=windows)
 2. Create a directory for MinIO data:
 ```bash
 mkdir C:\minio\data
