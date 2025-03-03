@@ -769,3 +769,87 @@ async def get_user_statistics(
     except Exception as e:
         print(f"Error getting user statistics: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
+    
+@router.post("/bookmark/{article_id}", status_code=status.HTTP_200_OK)
+async def bookmark_article(
+    article_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    try:
+        # Convert article_id to ObjectId
+        article_object_id = ensure_object_id(article_id)
+        
+        # Check if article exists
+        article = await db.articles.find_one({"_id": article_object_id})
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        # Convert current user's bookmarks list to ObjectId objects for comparison
+        bookmarks = current_user.get('bookmarks', [])
+        bookmark_ids = [ensure_object_id(str(_id)) for _id in bookmarks]
+        
+        # Check if already bookmarked
+        if article_object_id in bookmark_ids:
+            return {"status": "info", "message": "Article already bookmarked"}
+        
+        # Update user's bookmarks list
+        result = await db.users.update_one(
+            {"_id": current_user.id},
+            {"$addToSet": {"bookmarks": article_object_id}}
+        )
+        
+        if result.modified_count:
+            return {"status": "success", "message": "Article bookmarked successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to bookmark article")
+            
+    except Exception as e:
+        print(f"Error bookmarking article: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.post("/unbookmark/{article_id}", status_code=status.HTTP_200_OK)
+async def unbookmark_article(
+    article_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    try:
+        # Convert article_id to ObjectId
+        article_object_id = ensure_object_id(article_id)
+        
+        # Check if article exists
+        article = await db.articles.find_one({"_id": article_object_id})
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        
+        # Remove article from user's bookmarks
+        result = await db.users.update_one(
+            {"_id": current_user.id},
+            {"$pull": {"bookmarks": article_object_id}}
+        )
+        
+        if result.modified_count:
+            return {"status": "success", "message": "Article removed from bookmarks"}
+        else:
+            return {"status": "info", "message": "Article was not in bookmarks"}
+            
+    except Exception as e:
+        print(f"Error removing bookmark: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.get("/me/bookmarks", response_model=List[ArticleInDB])
+async def get_bookmarks(
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    bookmarked_articles = []
+    
+    bookmarks = current_user.get('bookmarks', [])
+    for article_id in bookmarks:
+        article = await db.articles.find_one({"_id": article_id})
+        if article:
+            bookmarked_articles.append(article)
+    
+    return bookmarked_articles

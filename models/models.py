@@ -163,6 +163,7 @@ class UserInDB(UserBase):
     following: List[PyObjectId] = []
     followers: List[PyObjectId] = []
     profile_picture_base64:  str
+    bookmarks: List[PyObjectId] = []
 
     # Add validators to ensure ObjectId conversion in lists
     @validator('following', 'favorites', 'followers', pre=True)
