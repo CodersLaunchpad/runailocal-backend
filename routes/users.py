@@ -284,9 +284,173 @@ def generate_initials_avatar_base64(initials):
 
 
 
-@router.get("/me", response_model=UserInDB)
-async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-    return current_user
+# @router.get("/me", response_model=UserInDB)
+# async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
+#     return current_user
+
+@router.get("/me", status_code=status.HTTP_200_OK)
+async def read_users_me(
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """
+    Retrieve detailed information for the currently authenticated user including:
+    - Basic user information
+    - Follower and following lists with user details
+    - Article statistics
+    - Bookmark information
+    
+    Authentication is required.
+    """
+    
+    try:
+        # Get user ObjectId
+        user_id = current_user.id
+        
+        # Get follower and following IDs
+        follower_ids = current_user.followers
+        following_ids = current_user.following
+        
+        # Convert PyObjectId to ObjectId if needed
+        follower_object_ids = [ObjectId(str(f_id)) for f_id in follower_ids]
+        following_object_ids = [ObjectId(str(f_id)) for f_id in following_ids]
+        
+        # Get follower and following counts
+        follower_count = len(follower_ids)
+        following_count = len(following_ids)
+        
+        # Fetch follower details
+        followers_list = []
+        if follower_object_ids:
+            followers_cursor = db.users.find({"_id": {"$in": follower_object_ids}})
+            followers_data = await followers_cursor.to_list(length=None)
+            
+            for follower in followers_data:
+                followers_list.append({
+                    "id": str(follower["_id"]),
+                    "username": follower.get("username", ""),
+                    "first_name": follower.get("first_name", ""),
+                    "last_name": follower.get("last_name", ""),
+                    "profile_picture_base64": follower.get("profile_picture_base64", "")
+                })
+        
+        # Fetch following details
+        following_list = []
+        if following_object_ids:
+            following_cursor = db.users.find({"_id": {"$in": following_object_ids}})
+            following_data = await following_cursor.to_list(length=None)
+            
+            for following_user in following_data:
+                following_list.append({
+                    "id": str(following_user["_id"]),
+                    "username": following_user.get("username", ""),
+                    "first_name": following_user.get("first_name", ""),
+                    "last_name": following_user.get("last_name", ""),
+                    "profile_picture_base64": following_user.get("profile_picture_base64", "")
+                })
+        
+        # Get article statistics
+        article_count = await db.articles.count_documents({"user_id": ObjectId(str(user_id))})
+        total_views = 0
+        total_likes = 0
+        total_comments = 0
+        
+        # Get article details (limited to 5 most recent for basic stats)
+        articles_cursor = db.articles.find({"user_id": ObjectId(str(user_id))}).sort("created_at", -1).limit(5)
+        articles = await articles_cursor.to_list(length=5)
+        
+        recent_articles = []
+        for article in articles:
+            comment_count = len(article.get("comments", []))
+            
+            article_data = {
+                "id": str(article.get("_id")),
+                "title": article.get("title", ""),
+                "slug": article.get("slug", ""),
+                "likes": article.get("likes", 0),
+                "views": article.get("views", 0),
+                "comment_count": comment_count,
+                "created_at": article.get("created_at", ""),
+            }
+            
+            recent_articles.append(article_data)
+            
+            # Update totals
+            total_views += article.get("views", 0)
+            total_likes += article.get("likes", 0)
+            total_comments += comment_count
+        
+        # Get all totals (separate aggregation for accuracy across all articles)
+        pipeline = [
+            {"$match": {"user_id": ObjectId(str(user_id))}},
+            {"$group": {
+                "_id": None,
+                "total_views": {"$sum": "$views"},
+                "total_likes": {"$sum": "$likes"}
+            }}
+        ]
+        
+        article_stats = await db.articles.aggregate(pipeline).to_list(length=1)
+        if article_stats:
+            total_views = article_stats[0].get("total_views", 0)
+            total_likes = article_stats[0].get("total_likes", 0)
+        
+        # Get bookmark details
+        bookmark_ids = current_user.bookmarks
+        bookmark_object_ids = [ObjectId(str(b_id)) for b_id in bookmark_ids]
+        bookmarks_count = len(bookmark_ids)
+        
+        # Get bookmark article details (limited to 5 most recent)
+        bookmarks_list = []
+        if bookmark_object_ids:
+            bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}}).limit(5)
+            bookmarks_data = await bookmarks_cursor.to_list(length=5)
+            
+            for bookmark in bookmarks_data:
+                bookmarks_list.append({
+                    "id": str(bookmark.get("_id")),
+                    "title": bookmark.get("title", ""),
+                    "slug": bookmark.get("slug", ""),
+                    "author": bookmark.get("author_name", ""),
+                    "created_at": bookmark.get("created_at", "")
+                })
+        
+        # Build custom response
+        user_data = {
+            "id": str(user_id),
+            "username": current_user.username,
+            "email": current_user.email,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "user_type": current_user.user_type,
+            "created_at": current_user.created_at,
+            "last_login": current_user.last_login,
+            "profile_picture_base64": current_user.profile_picture_base64,
+            "user_details": current_user.user_details,
+            
+            # Connection stats
+            "follower_count": follower_count,
+            "following_count": following_count,
+            "followers": followers_list,
+            "following": following_list,
+            
+            # Article stats
+            "article_count": article_count,
+            "total_views": total_views,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "recent_articles": recent_articles,
+            
+            # Bookmark stats
+            "bookmarks_count": bookmarks_count,
+            "recent_bookmarks": bookmarks_list
+        }
+        
+        return user_data
+        
+    except Exception as e:
+        print(f"Error getting user profile data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 # TODO: rename to get_user_favorites
 @router.get("/me/favorites", response_model=List[ArticleInDB])
