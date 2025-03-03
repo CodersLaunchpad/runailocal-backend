@@ -6,6 +6,8 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+
+from fastapi.responses import JSONResponse
 from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 from models.models import PyObjectId, Token, UserCreate, UserInDB, ArticleInDB, UserUpdate, ensure_object_id, prepare_mongo_document
 from helpers.auth import create_access_token, get_current_user_optional, get_password_hash, get_current_active_user, get_admin_user
@@ -1084,17 +1086,158 @@ async def delete_bookmark_article(
         print(f"Error removing bookmark: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
         
-@router.get("/me/bookmarks", response_model=List[ArticleInDB])
+""" @router.get("/me/bookmarks", response_model=List[Dict[str, Any]])
 async def get_bookmarks(
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
+    # "" "Get all bookmarked articles with full article details and author information"" "
     bookmarked_articles = []
+
+    # print("current user info: ", current_user)
     
-    bookmarks = current_user.get('bookmarks', [])
+    # Access bookmarks attribute directly from Pydantic model
+    bookmarks = current_user.bookmarks if hasattr(current_user, 'bookmarks') else []
     for article_id in bookmarks:
-        article = await db.articles.find_one({"_id": article_id})
+        print("muchos bookmarks: ", bookmarks)
+        print("got here")
+        object_id = ensure_object_id(article_id)
+        article = await db.articles.find_one({"_id": object_id})
         if article:
-            bookmarked_articles.append(article)
+            print("found zi articles: ", article)
+            # Get the related category
+            category_data = None
+            if "category_id" in article:
+                category_data = await db.categories.find_one({"_id": article["category_id"]})
+            
+            # Get the related author with followers
+            author_data = None
+            if "author_id" in article:
+                author_data = await db.users.find_one(
+                    {"_id": article["author_id"]},
+                    projection={
+                        "_id": 1,
+                        "username": 1,
+                        "first_name": 1,
+                        "last_name": 1,
+                        "profile_picture_base64": 1,
+                        "followers": 1
+                    }
+                )
+                
+                # Add follower_count to author data
+                if author_data and "followers" in author_data:
+                    author_data["follower_count"] = len(author_data["followers"])
+                    # Remove the followers array if you don't need the actual follower details
+                    del author_data["followers"]
+                else:
+                    author_data["follower_count"] = 0
+            
+            # Build complete article with relations
+            article_with_relations = prepare_mongo_document({
+                **article,
+                "category": prepare_mongo_document(category_data) if category_data else None,
+                "author": prepare_mongo_document(author_data) if author_data else None
+            })
+            
+            bookmarked_articles.append(article_with_relations)
     
     return bookmarked_articles
+ """    
+
+from datetime import datetime
+
+@router.get("/me/bookmarks")
+async def get_bookmarks(
+    current_user: UserInDB = Depends(get_current_active_user),
+    db = Depends(get_db)
+):
+    """Get all bookmarked articles with full article details and author information"""
+    try:
+        # Helper function to convert MongoDB documents to JSON serializable objects
+        def clean_document(doc):
+            if isinstance(doc, dict):
+                return {k: clean_document(v) for k, v in doc.items()}
+            elif isinstance(doc, list):
+                return [clean_document(i) for i in doc]
+            elif isinstance(doc, ObjectId):
+                return str(doc)
+            elif isinstance(doc, datetime):
+                return doc.isoformat()
+            else:
+                return doc
+        
+        bookmarked_articles = []
+        
+        # Access bookmarks attribute directly from Pydantic model
+        bookmarks = current_user.bookmarks if hasattr(current_user, 'bookmarks') else []
+        for article_id in bookmarks:
+            # Convert string ID to ObjectId
+            try:
+                object_id = ObjectId(article_id)
+                article = await db.articles.find_one({"_id": object_id})
+                
+                if article:
+                    # Convert the article to a JSON serializable format
+                    article = clean_document(article)
+                    
+                    # Get the related category
+                    category_data = None
+                    if "category_id" in article:
+                        category = await db.categories.find_one({"_id": ObjectId(article["category_id"])})
+                        if category:
+                            category_data = {
+                                "_id": str(category["_id"]),
+                                "name": category.get("name", ""),
+                                "slug": category.get("slug", "")
+                            }
+                    
+                    # Get the related author with followers
+                    author_data = None
+                    if "author_id" in article:
+                        author = await db.users.find_one(
+                            {"_id": ObjectId(article["author_id"])},
+                            projection={
+                                "_id": 1,
+                                "username": 1,
+                                "first_name": 1,
+                                "last_name": 1,
+                                "profile_picture_base64": 1,
+                                "followers": 1
+                            }
+                        )
+                        
+                        if author:
+                            # Manually convert the author data
+                            author_data = {
+                                "_id": str(author["_id"]),
+                                "username": author.get("username", ""),
+                                "first_name": author.get("first_name", ""),
+                                "last_name": author.get("last_name", ""),
+                                "profile_picture_base64": author.get("profile_picture_base64", "")
+                            }
+                            
+                            # Calculate follower count
+                            followers = author.get("followers", [])
+                            author_data["follower_count"] = len(followers)
+                    
+                    # Build complete article with relations
+                    article_with_relations = {
+                        **article,
+                        "category": category_data,
+                        "author": author_data
+                    }
+                    
+                    # Convert any remaining ObjectIds to strings
+                    bookmarked_articles.append(article_with_relations)
+            except Exception as e:
+                print(f"Error processing bookmark {article_id}: {str(e)}")
+                continue
+        
+        # Return the JSON response directly
+        # Clean the entire response one more time to ensure all objects are serializable
+        serializable_response = clean_document(bookmarked_articles)
+        return JSONResponse(content=serializable_response)
+    except Exception as e:
+        print(f"Error in get_bookmarks: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
