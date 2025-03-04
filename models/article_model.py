@@ -54,8 +54,10 @@ async def build_article_query(db, category: Optional[str] = None,
     
     # Uncomment if you want to filter published articles
     # Filter by article status (using the enum value)
-    if status:
-        query["status"] = status.value
+    # Filter by article status (if provided)
+    if status is not None:
+        # Use status.value if available, otherwise assume status is already a string
+        query["status"] = status.value if hasattr(status, "value") else status
     
     return query
 
