@@ -361,14 +361,18 @@ async def read_users_me(
                 })
         
         # Get article statistics
-        article_count = await db.articles.count_documents({"user_id": ObjectId(str(user_id))})
+        # article_count = await db.articles.count_documents({"user_id": ObjectId(str(user_id))})
         total_views = 0
         total_likes = 0
         total_comments = 0
         
         # Get article details (limited to 5 most recent for basic stats)
-        articles_cursor = db.articles.find({"user_id": ObjectId(str(user_id))}).sort("created_at", -1).limit(5)
-        articles = await articles_cursor.to_list(length=5)
+        # articles_cursor = db.articles.find({"user_id": ObjectId(str(user_id))}).sort("created_at", -1).limit(5)
+        articles_cursor = db.articles.find({"user_id": ObjectId(str(user_id))}).sort("created_at", -1)
+        # articles = await articles_cursor.to_list(length=5)
+        articles = await articles_cursor.to_list()
+        article_count = await db.articles.count_documents({"author_id": ensure_object_id(user_id)})
+
         
         recent_articles = []
         for article in articles:
@@ -417,7 +421,8 @@ async def read_users_me(
         if bookmark_object_ids:
             # bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}}).limit(5)
             bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}})
-            bookmarks_data = await bookmarks_cursor.to_list(length=5)
+            # bookmarks_data = await bookmarks_cursor.to_list(length=5)
+            bookmarks_data = await bookmarks_cursor.to_list()
             
             for bookmark in bookmarks_data:
                 # print("bookmark returned article data: ", bookmark)
