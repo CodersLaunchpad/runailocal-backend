@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
+from models.article_model import build_article_query, enrich_article_data, get_article, get_category_data
 from models.models import clean_document, prepare_mongo_document
 from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
-from helpers.auth import get_current_active_user, get_admin_user, get_author_user
+from helpers.auth import get_current_active_user, get_admin_user, get_author_user, get_current_user_optional
 from pymongo import ReturnDocument
 from db.db import get_db
 
@@ -159,55 +160,6 @@ async def create_article(
         print(f"Error creating article: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
-# @router.get("/", response_model=List[ArticleInDB])
-# async def read_articles(
-#     category: Optional[str] = None,
-#     author: Optional[str] = None,
-#     tag: Optional[str] = None,
-#     featured: Optional[bool] = None,
-#     published_only: bool = True,
-#     skip: int = 0,
-#     limit: int = 20,
-#     db = Depends(get_db)
-# ):
-#     query = {}
-    
-#     # Filter by category
-#     if category:
-#         query["category.slug"] = category
-    
-#     # Filter by author
-#     if author:
-#         try:
-#             author_id = PyObjectId(author)
-#             query["author_id"] = author_id
-#         except:
-#             # Try to find author by username
-#             author_obj = await db.users.find_one({"username": author})
-#             if author_obj:
-#                 query["author_id"] = author_obj["_id"]
-#             else:
-#                 return []
-    
-#     # Filter by tag
-#     if tag:
-#         query["tags"] = tag
-    
-#     # Filter by featured status
-#     if featured is not None:
-#         query["featured"] = featured
-    
-#     # Only show published articles
-#     if published_only:
-#         query["published_at"] = {"$ne": None}
-    
-#     articles = []
-#     cursor = db.articles.find(query).skip(skip).limit(limit).sort("created_at", -1)
-    
-#     async for document in cursor:
-#         articles.routerend(document)
-    
-#     return articles
 
 @router.get("/", response_model=List[Dict[str, Any]])
 async def read_articles(
@@ -218,92 +170,28 @@ async def read_articles(
     published_only: bool = True,
     skip: int = 0,
     limit: int = 20,
+    current_user: Optional[UserInDB] = Depends(get_current_user_optional),
     db = Depends(get_db)
 ):
     """Get a list of articles with optional filtering"""
     try:
         # Build query filter
-        query = {}
+        query = await build_article_query(
+            db, category, author, tag, featured, published_only
+        )
         
-        # Filter by category
-        if category:
-            if ObjectId.is_valid(category):
-                query["category_id"] = ObjectId(category)
-            else:
-                # Find category by slug
-                category_obj = await db.categories.find_one({"slug": category})
-                if category_obj:
-                    query["category_id"] = category_obj["_id"]
-                else:
-                    return []
-        
-        # Filter by author
-        if author:
-            if ObjectId.is_valid(author):
-                query["author_id"] = ObjectId(author)
-            else:
-                # Find author by username
-                author_obj = await db.users.find_one({"username": author})
-                if author_obj:
-                    query["author_id"] = author_obj["_id"]
-                else:
-                    return []
-        
-        # Filter by tag
-        if tag:
-            query["tags"] = tag
-        
-        # Filter by featured status
-        if featured is not None:
-            query["featured"] = featured
-        
-        # Only show published articles
-        # if published_only:
-        #     query["published_at"] = {"$ne": None}
+        if query is None:
+            return []  # No matching category or author
         
         # Fetch articles
         cursor = db.articles.find(query).sort("created_at", -1).skip(skip).limit(limit)
         
         articles = []
         async for article in cursor:
-            # Get the related category
-            category_data = None
-            if "category_id" in article:
-                category_data = await db.categories.find_one({"_id": article["category_id"]})
-            
-            # Get the related author (with limited fields)
-            author_data = None
-            if "author_id" in article:
-                author_data = await db.users.find_one(
-                    {"_id": article["author_id"]},
-                    projection={
-                        "_id": 1,
-                        "username": 1,
-                        "first_name": 1,
-                        "last_name": 1,
-                        "profile_picture_base64": 1,
-                    "followers": 1
-                }
-            )
-            
-            # Add follower_count to author data
-            if author_data and "followers" in author_data:
-                author_data["follower_count"] = len(author_data["followers"])
-                # Remove the followers array if you don't need the actual follower details
-                del author_data["followers"]
-            else:
-                author_data["follower_count"] = 0
-            
-            # Build response
-            article_with_relations = prepare_mongo_document({
-                **article,
-                "category": category_data,
-                "author": author_data
-            })
-            
-            articles.append(article_with_relations)
+            # Enrich article with related data
+            enriched_article = await enrich_article_data(db, article)
+            articles.append(prepare_mongo_document(enriched_article))
         
-        # return articles
         serializable_response = clean_document(articles)
         return JSONResponse(content=serializable_response)
     
@@ -314,32 +202,6 @@ async def read_articles(
             detail=f"An error occurred: {str(e)}"
         )
 
-# @router.get("/{article_id}", response_model=ArticleInDB)
-# async def read_article(article_id: str, db = Depends(get_db)):
-#     try:
-#         object_id = PyObjectId(article_id)
-#         article = await db.articles.find_one({"_id": object_id})
-        
-#         if article:
-#             # Check if article is published
-#             if article.get("published_at") is None:
-#                 raise HTTPException(status_code=404, detail="Article not found or not published")
-            
-#             return article
-        
-#         raise HTTPException(status_code=404, detail="Article not found")
-#     except:
-#         # Try to find by slug
-#         article = await db.articles.find_one({"slug": article_id})
-        
-#         if article:
-#             # Check if article is published
-#             if article.get("published_at") is None:
-#                 raise HTTPException(status_code=404, detail="Article not found or not published")
-            
-#             return article
-        
-#         raise HTTPException(status_code=404, detail="Article not found")
     
 @router.get("/{id_or_slug}", response_model=Dict[str, Any])
 async def read_article(
@@ -367,136 +229,16 @@ async def read_article(
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        # Get the related category
-        category_data = None
-        if "category_id" in article:
-            category_data = await db.categories.find_one({"_id": article["category_id"]})
+        # Enrich article with related data
+        enriched_article = await enrich_article_data(db, article)
+        article_with_relations = prepare_mongo_document(enriched_article)
         
-        # Get the related author with followers array
-        author_data = None
-        if "author_id" in article:
-            author_data = await db.users.find_one(
-                {"_id": article["author_id"]},
-                projection={
-                    "_id": 1,
-                    "username": 1,
-                    "first_name": 1,
-                    "last_name": 1,
-                    "profile_picture_base64": 1,
-                    "followers": 1
-                }
-            )
-            
-            # Add follower_count to author data
-            if author_data and "followers" in author_data:
-                author_data["follower_count"] = len(author_data["followers"])
-                # Remove the followers array if you don't need the actual follower details
-                del author_data["followers"]
-            else:
-                author_data["follower_count"] = 0
-        
-        # Build response with prepare_mongo_document to handle ObjectId conversion
-        article_with_relations = prepare_mongo_document({
-            **article,
-            "category": category_data if category_data else None,
-            "author": author_data if author_data else None
-        })
-        
-        # return article_with_relations
-    
         serializable_response = clean_document(article_with_relations)
         return JSONResponse(content=serializable_response)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-""" @router.put("/{article_id}", response_model=ArticleInDB)
-async def update_article(
-    article_id: str,
-    article_update: ArticleUpdate,
-    current_user: UserInDB = Depends(get_current_active_user),
-    db = Depends(get_db)
-):
-    try:
-        object_id = PyObjectId(article_id)
-        
-        # Get the article
-        article = await db.articles.find_one({"_id": object_id})
-        if not article:
-            raise HTTPException(status_code=404, detail="Article not found")
-        
-        # Check if user is author or admin
-        # if str(article["author_id"]) != str(current_user.id) and current_user.user_details.get("type") != "admin":
-        if str(article["author_id"]) != str(current_user.id) and current_user.user_type != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
-            )
-        
-        # Check if slug is being updated and is unique
-        if article_update.slug:
-            existing_article = await db.articles.find_one({
-                "slug": article_update.slug,
-                "_id": {"$ne": object_id}
-            })
-            if existing_article:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Article with this slug already exists"
-                )
-        
-        # Check if category is being updated
-        if article_update.category and article_update.category.get("_id"):
-            category_id = article_update.category.get("_id")
-            try:
-                cat_object_id = PyObjectId(category_id)
-                category = await db.categories.find_one({"_id": cat_object_id})
-                if not category:
-                    raise HTTPException(status_code=404, detail="Category not found")
-                
-                # Update full category info
-                article_update.category = {
-                    "_id": str(category["_id"]),
-                    "name": category["name"],
-                    "slug": category["slug"]
-                }
-            except:
-                raise HTTPException(status_code=400, detail="Invalid category ID")
-        
-        update_data = {k: v for k, v in article_update.dict(exclude_unset=True).items() if v is not None}
-        update_data["updated_at"] = datetime.now(timezone.utc)
-        
-        if update_data:
-            updated_article = await db.articles.find_one_and_update(
-                {"_id": object_id},
-                {"$set": update_data},
-                return_document=ReturnDocument.AFTER
-            )
-            
-            if updated_article:
-                return updated_article
-        
-        raise HTTPException(status_code=404, detail="Article not found")
-    except:
-        raise HTTPException(status_code=400, detail="Invalid article ID")
- """
-
-# @router.get("/home")
-# @router.get("/home/", response_model=Dict[str, Any])
-# async def get_home_page_articles(
-#     db = Depends(get_db)
-# ):
-#     try:
-#         print("Going to get all the articles")
-#         return {"testing": "foobar"}
-#     except Exception as e:
-#         import traceback
-#         error_details = traceback.format_exc()
-#         print(f"Detailed error: {error_details}")
-#         print(f"Detailed error: {error_details}")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# 2. Edit article route - admins can edit all, users can edit their own
 @router.put("/{id}", response_model=Dict[str, Any])
 async def update_article(
     id: str,
@@ -504,281 +246,113 @@ async def update_article(
     current_user = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
-    """Update an article (admins can edit all, users can only edit their own)"""
-    try:
-        # Check if user is authenticated
-        if not current_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        
-        # Validate ID
-        if not ObjectId.is_valid(id):
-            raise HTTPException(status_code=400, detail="Invalid article ID")
-        
-        # Get the article
-        article_id = ObjectId(id)
-        article = await db.articles.find_one({"_id": article_id})
-        
-        if not article:
-            raise HTTPException(status_code=404, detail="Article not found")
-        
-        # print("current user details: ", current_user)
-        print("current user type: ", current_user.user_type)
-        # print("current user type: ", current_user["user_type"])
-        
-        # Check permissions
-        # is_admin = current_user["user_type"] == "admin"
-        # is_admin = current_user.user_type == "admin"
-        # is_author = str(article["author_id"]) == str(current_user["_id"])
-        is_admin = current_user.user_type == "admin"  # ✅ Correct access
-        is_author = str(article["author_id"]) == str(current_user.id)  # ✅ Use .id instead of ["_id"]
-        
-        if not (is_admin or is_author):
-            raise HTTPException(status_code=403, detail="You don't have permission to edit this article")
-        
-        # Prepare update data
-        update_data = {k: v for k, v in article_update.dict(exclude_unset=True).items() if v is not None}
-        
-        # If slug is being updated, check uniqueness
-        if "slug" in update_data:
-            existing = await db.articles.find_one({"slug": update_data["slug"], "_id": {"$ne": article_id}})
-            if existing:
-                raise HTTPException(status_code=400, detail="Slug already exists")
-        
-        # Handle category ID conversion
-        if "category_id" in update_data and update_data["category_id"]:
-            if not ObjectId.is_valid(update_data["category_id"]):
-                raise HTTPException(status_code=400, detail="Invalid category ID")
-            category = await db.categories.find_one({"_id": ObjectId(update_data["category_id"])})
-            if not category:
-                raise HTTPException(status_code=404, detail="Category not found")
-            update_data["category_id"] = ObjectId(update_data["category_id"])
-        
-        # If no data to update, return the current article
-        if not update_data:
-            # Get updated article with relations
-            category_data = None
-            if "category_id" in article:
-                category_data = await db.categories.find_one({"_id": article["category_id"]})
-            
-            author_data = await db.users.find_one(
-                {"_id": article["author_id"]},
-                projection={
-                    "_id": 1,
-                    "username": 1,
-                    "first_name": 1,
-                    "last_name": 1,
-                    "profile_picture_base64": 1
-                }
-            )
-            
-            return prepare_mongo_document({
-                **article,
-                "category": category_data,
-                "author": author_data
-            })
-        
-        # Add updated_at timestamp
-        update_data["updated_at"] = datetime.utcnow()
-        
-        # Update the article
-        await db.articles.update_one(
-            {"_id": article_id},
-            {"$set": update_data}
-        )
-        
-        # Get updated article
-        updated_article = await db.articles.find_one({"_id": article_id})
-        
-        # Get related data
-        category_data = None
-        if "category_id" in updated_article:
-            category_data = await db.categories.find_one({"_id": updated_article["category_id"]})
-        
-        author_data = await db.users.find_one(
-            {"_id": updated_article["author_id"]},
-            projection={
-                "_id": 1,
-                "username": 1,
-                "first_name": 1,
-                "last_name": 1,
-                "profile_picture_base64": 1
-            }
-        )
-        
-        # Return updated article with relations
-        # return prepare_mongo_document({
-        #     **updated_article,
-        #     "category": category_data,
-        #     "author": author_data
-        # })
-        response_obj = prepare_mongo_document({
-            **updated_article,
-            "category": category_data,
-            "author": author_data
+    """
+    Update an article.
+    Admins can edit any article while non-admins can only edit their own.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Retrieve the article
+    article = await get_category_data(db, id)
+
+    # Permission check: admins can edit all; authors can edit their own
+    is_admin = current_user.user_type == "admin"
+    is_author = str(article["author_id"]) == str(current_user.id)
+    if not (is_admin or is_author):
+        raise HTTPException(status_code=403, detail="You don't have permission to edit this article")
+
+    # Prepare update data, excluding unset or None values
+    update_data = {
+        k: v
+        for k, v in article_update.dict(exclude_unset=True).items()
+        if v is not None
+    }
+
+    # If slug is being updated, check for uniqueness
+    if "slug" in update_data:
+        existing = await db.articles.find_one({
+            "slug": update_data["slug"],
+            "_id": {"$ne": article["_id"]}
         })
-        serializable_response = clean_document(response_obj)
-        return JSONResponse(content=serializable_response)
-    
-        
-    except Exception as e:
-        print(f"Error updating article: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        if existing:
+            raise HTTPException(status_code=400, detail="Slug already exists")
+
+    # Handle category ID conversion if necessary
+    if "category_id" in update_data and update_data["category_id"]:
+        # Validate and fetch the category
+        await get_category_data(db, update_data["category_id"])
+        update_data["category_id"] = ObjectId(update_data["category_id"])
+
+    # If there is nothing to update, simply return the enriched article
+    if not update_data:
+        enriched = await enrich_article_data(db, article)
+        return enriched
+
+    # Add the updated timestamp and update the article
+    update_data["updated_at"] = datetime.utcnow()
+    await db.articles.update_one(
+        {"_id": article["_id"]},
+        {"$set": update_data}
+    )
+
+    # Retrieve the updated article and enrich it before returning
+    updated_article = await get_article(id, db)
+    enriched = await enrich_article_data(db, updated_article)
+    return JSONResponse(content=clean_document(enriched))
 
 
-    
-# Route for home page content
+# 2. Home Page Articles Route
 @router.get("/home/", response_model=Dict[str, Any])
-async def get_home_page_articles(
-    db = Depends(get_db)
-):
-    """Get articles for the home page - spotlighted, popular, and by category"""
-    try:
-        print("Going to get all the articles")
-        # return {"testing" : "foobar"}
-        result = {}
-        
-        # 1. Get spotlighted articles (max 3)
-        spotlight_query = {"status": "published", "is_spotlight": True}
-        print(f"Spotlight query: {spotlight_query}")
-        # spotlight_cursor = db.articles.find(spotlight_query).sort("published_at", -1).limit(3)
-        # todo sort out all the published stuff
-        spotlight_cursor = db.articles.find(spotlight_query).sort("updated_at", -1).limit(3)
-        
-        spotlighted = []
-        async for article in spotlight_cursor:
-            # Get related data
-            category_data = None
-            if "category_id" in article:
-                category_data = await db.categories.find_one({"_id": article["category_id"]})
-            
-            # Get author data including followers array
-            author_data = await db.users.find_one(
-                {"_id": article["author_id"]},
-                projection={
-                    "_id": 1,
-                    "username": 1,
-                    "first_name": 1,
-                    "last_name": 1,
-                    "profile_picture_base64": 1,
-                    "followers": 1
-                }
-            )
-            
-            # Add follower_count to author data
-            if author_data and "followers" in author_data:
-                author_data["follower_count"] = len(author_data["followers"])
-                # Remove the followers array if you don't need the actual follower details
-                del author_data["followers"]
-            else:
-                author_data["follower_count"] = 0
-            
-            spotlighted.append(prepare_mongo_document({
-                **article,
-                "category": category_data,
-                "author": prepare_mongo_document(author_data)
-            }))
-        
-        result["spotlighted"] = spotlighted
-        
-        # 2. Get popular articles
-        popular_query = {"status": "published", "is_popular": True}
-        # popular_cursor = db.articles.find(popular_query).sort("published_at", -1).limit(6)
-        popular_cursor = db.articles.find(popular_query).sort("updated_at", -1).limit(6)
-        
-        popular = []
-        async for article in popular_cursor:
-            # Get related data
-            category_data = None
-            if "category_id" in article:
-                category_data = await db.categories.find_one({"_id": article["category_id"]})
-            
-            # Get author data including followers array
-            author_data = await db.users.find_one(
-                {"_id": article["author_id"]},
-                projection={
-                    "_id": 1,
-                    "username": 1,
-                    "first_name": 1,
-                    "last_name": 1,
-                    "profile_picture_base64": 1,
-                    "followers": 1
-                }
-            )
-            
-            # Add follower_count to author data
-            if author_data and "followers" in author_data:
-                author_data["follower_count"] = len(author_data["followers"])
-                # Remove the followers array if you don't need the actual follower details
-                del author_data["followers"]
-            else:
-                author_data["follower_count"] = 0
-            
-            popular.append(prepare_mongo_document({
-                **article,
-                "category": category_data,
-                "author": prepare_mongo_document(author_data)
-            }))
-        
-        result["popular"] = popular
-        
-        # 3. Get articles by category
-        # First get all categories
-        categories = await db.categories.find().to_list(length=100)
-        
-        by_category = {}
-        for category in categories:
-            cat_id = category["_id"]
-            cat_name = category["name"]
-            
-            # Get published articles in this category
-            cat_query = {"status": "published", "category_id": cat_id}
-            # cat_cursor = db.articles.find(cat_query).sort("published_at", -1).limit(4)
-            cat_cursor = db.articles.find(cat_query).sort("updated_at", -1).limit(4)
-            
-            cat_articles = []
-            async for article in cat_cursor:
-                # Get author data including followers array
-                author_data = await db.users.find_one(
-                    {"_id": article["author_id"]},
-                    projection={
-                        "_id": 1,
-                        "username": 1,
-                        "first_name": 1,
-                        "last_name": 1,
-                        "profile_picture_base64": 1,
-                        "followers": 1
-                    }
-                )
-                
-                # Add follower_count to author data
-                if author_data and "followers" in author_data:
-                    author_data["follower_count"] = len(author_data["followers"])
-                    # Remove the followers array if you don't need the actual follower details
-                    del author_data["followers"]
-                else:
-                    author_data["follower_count"] = 0
-                
-                cat_articles.append(prepare_mongo_document({
-                    **article,
-                    "category": prepare_mongo_document(category),
-                    "author": prepare_mongo_document(author_data)
-                }))
-            
-            if cat_articles:  # Only include categories with articles
-                by_category[cat_name] = cat_articles
-        
-        result["by_category"] = by_category
+async def get_home_page_articles(db = Depends(get_db)):
+    """
+    Get articles for the home page including spotlighted, popular,
+    and articles grouped by category.
+    """
+    result = {}
 
-        
-        
-        # return result
-        # return prepare_mongo_document(result)
-        serializable_response = clean_document(result)
-        return JSONResponse(content=serializable_response)
-        
-    except Exception as e:
-        print(f"Error getting homepage articles: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Helper function to fetch and enrich articles by query
+    async def fetch_articles(query: dict, sort_field: str, limit: int, include_followers: bool):
+        cursor = db.articles.find(query).sort(sort_field, -1).limit(limit)
+        articles = []
+        async for article in cursor:
+            enriched = await enrich_article_data(db, article)
+            articles.append(enriched)
+        return articles
+
+    # 1. Spotlighted articles (max 3)
+    result["spotlighted"] = await fetch_articles(
+        {"status": "published", "is_spotlight": True},
+        sort_field="updated_at",
+        limit=3,
+        include_followers=True
+    )
+
+    # 2. Popular articles (max 6)
+    result["popular"] = await fetch_articles(
+        {"status": "published", "is_popular": True},
+        sort_field="updated_at",
+        limit=6,
+        include_followers=True
+    )
+
+    # 3. Articles by category
+    categories = await db.categories.find().to_list(length=100)
+    by_category = {}
+    for category in categories:
+        cat_query = {"status": "published", "category_id": category["_id"]}
+        cursor = db.articles.find(cat_query).sort("updated_at", -1).limit(4)
+        cat_articles = []
+        async for article in cursor:
+            enriched = await enrich_article_data(db, article)
+            # Override category with the current category document if needed
+            enriched["category"] = prepare_mongo_document(category)
+            cat_articles.append(enriched)
+        if cat_articles:  # Only include categories with articles
+            by_category[category["name"]] = cat_articles
+    result["by_category"] = by_category
+
+    return JSONResponse(content=clean_document(result))
 
 # 3. Request article publish route - only for authors
 @router.post("/{id}/request-publish", status_code=200)

@@ -410,14 +410,17 @@ async def read_users_me(
         bookmark_ids = current_user.bookmarks
         bookmark_object_ids = [ObjectId(str(b_id)) for b_id in bookmark_ids]
         bookmarks_count = len(bookmark_ids)
+        print("bookmark object ids: ", bookmark_object_ids)
         
         # Get bookmark article details (limited to 5 most recent)
         bookmarks_list = []
         if bookmark_object_ids:
-            bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}}).limit(5)
+            # bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}}).limit(5)
+            bookmarks_cursor = db.articles.find({"_id": {"$in": bookmark_object_ids}})
             bookmarks_data = await bookmarks_cursor.to_list(length=5)
             
             for bookmark in bookmarks_data:
+                # print("bookmark returned article data: ", bookmark)
                 bookmarks_list.append({
                     "id": str(bookmark.get("_id")),
                     "title": bookmark.get("title", ""),
@@ -425,6 +428,7 @@ async def read_users_me(
                     "author": bookmark.get("author_name", ""),
                     "created_at": bookmark.get("created_at", "")
                 })
+                print("bookmark list thing: ", bookmarks_list)
         
         # Build custom response
         user_data = {
@@ -454,12 +458,14 @@ async def read_users_me(
             
             # Bookmark stats
             "bookmarks_count": bookmarks_count,
-            "recent_bookmarks": bookmarks_list
+            "bookmarks": bookmarks_list
         }
-        
+        # print("user data is: ", user_data)
         # return user_data
 
         serializable_response = clean_document(prepare_mongo_document(user_data))
+        print("user data is: ", serializable_response)
+
         return JSONResponse(content=serializable_response)
         
     except Exception as e:
