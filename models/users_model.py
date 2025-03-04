@@ -13,7 +13,8 @@ async def get_author_data(db, author_id: ObjectId) -> Dict:
             "last_name": 1,
             "profile_picture_base64": 1,
             "followers": 1,
-            "following": 1
+            "following": 1,
+            "bookmarks": 1,  # Include bookmarks field in the projection
         }
     )
     
@@ -37,6 +38,10 @@ async def get_author_data(db, author_id: ObjectId) -> Dict:
             author_data["following_count"] = 0
         else:
             return None
+    
+    #  Convert ObjectIds in the bookmarks array to strings, if it exists
+    if "bookmarks" in author_data:
+        author_data["bookmarks"] = [str(b) for b in author_data["bookmarks"]]
     
     return author_data
 

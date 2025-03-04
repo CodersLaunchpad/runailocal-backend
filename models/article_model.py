@@ -85,6 +85,8 @@ async def get_article(db, article_id: str) -> dict:
     if not ObjectId.is_valid(article_id):
         raise HTTPException(status_code=400, detail="Invalid article ID")
     article = await db.articles.find_one({"_id": ObjectId(article_id)})
+    # Convert ObjectIds in "bookmarked_by" to strings, if the field exists.
+    article["bookmarked_by"] = [str(oid) for oid in article.get("bookmarked_by", [])]
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
     return article
