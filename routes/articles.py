@@ -222,7 +222,7 @@ async def read_article(
             query = {"slug": id_or_slug}
         
         # Apply published filter if needed
-        if status:
+        if article_status:
             query["status"] = article_status.value
         
         # Find the article
