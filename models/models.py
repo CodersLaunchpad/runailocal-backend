@@ -181,7 +181,7 @@ class NormalUserDetails(BaseModel):
         "arbitrary_types_allowed": True
     }
 
-class UserInDB(UserBase):
+class OldUserInDB(UserBase):
     id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
     password_hash: str
     user_type: str
@@ -228,7 +228,7 @@ class UserInDB(UserBase):
             obj["_id"] = str(obj["_id"])
         return super().model_validate(obj, *args, **kwargs)
 
-class UserUpdate(BaseModel):
+class OldUserUpdate(BaseModel):
     username: Optional[str] = Field(None, description="User's username")
     email: Optional[EmailStr] = Field(None, description="User's email address")
     first_name: Optional[str] = Field(None, description="User's first name")
