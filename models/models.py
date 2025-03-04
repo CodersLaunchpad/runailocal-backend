@@ -213,11 +213,15 @@ class UserInDB(UserBase):
         return super().model_validate(obj, *args, **kwargs)
 
 class UserUpdate(BaseModel):
-    username: Optional[str] = None
-    email: Optional[EmailStr] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    username: Optional[str] = Field(None, description="User's username")
+    email: Optional[EmailStr] = Field(None, description="User's email address")
+    first_name: Optional[str] = Field(None, description="User's first name")
+    last_name: Optional[str] = Field(None, description="User's last name")
+    password: Optional[str] = Field(None, description="User's password")
+    profile_picture: Optional[str] = Field(None, description="Base64 encoded profile picture")
+    bio: Optional[str] = Field(None, description="User's bio")
     user_details: Optional[Dict[str, Any]] = None
+
 
     model_config = {
         "arbitrary_types_allowed": True
