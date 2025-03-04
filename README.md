@@ -52,6 +52,12 @@ pip install -r requirements.txt
 
 MinIO is an object storage server compatible with Amazon S3. Follow these steps to set it up:
 
+#### docker compose (recommended)
+Run
+```bash
+docker compose up -d minio
+```
+
 #### Windows
 
 1. Download the MinIO Server for Windows from the [official MinIO website](https://min.io/open-source/download?platform=windows)
@@ -80,6 +86,15 @@ minio server ~/minio/data --console-address ":9001"
 ```
 
 4. Access the MinIO Console at http://localhost:9001 and set up your access credentials
+
+MinIO URL to Connect
+MinIO Console (Web UI):
+👉 http://localhost:9001
+(Login with user credentials configured in docker compose)
+
+MinIO API (For SDKs and CLI):
+👉 http://localhost:9000
+
 
 ### Step 5: Set Up Environment Variables
 
