@@ -1,3 +1,4 @@
+from enum import Enum
 from pydantic import BaseModel, Field, EmailStr, validator
 from pydantic import GetCoreSchemaHandler
 from typing import Annotated, List, Optional, Dict, Any
@@ -269,6 +270,12 @@ class CategoryUpdate(BaseModel):
         "arbitrary_types_allowed": True
     }
 
+class ArticleStatus(str, Enum):
+    draft = "draft"
+    published = "published"
+    rejected = "rejected"
+    pending = "pending"
+
 class ArticleBase(BaseModel):
     name: str
     slug: str
@@ -283,6 +290,7 @@ class ArticleBase(BaseModel):
     author_id: str
     image: str
     read_time: str
+    status: ArticleStatus
 
 
     model_config = {
@@ -290,6 +298,7 @@ class ArticleBase(BaseModel):
     }
 
 class ArticleCreate(ArticleBase):
+    status: ArticleStatus = ArticleStatus.draft  # Default is "draft"
     pass
 
 class ArticleImage(BaseModel):
@@ -310,6 +319,7 @@ class ArticleInDB(ArticleBase):
     comments: List[Dict[str, Any]] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
+    status: ArticleStatus
     bookmarked_by: List[PyObjectId] = []
 
     
@@ -323,11 +333,14 @@ class ArticleUpdate(BaseModel):
     category: Optional[str] = None
     featured: Optional[bool] = None
     tags: Optional[List[str]] = None
+    status: Optional[ArticleStatus] = None
     published_at: Optional[datetime] = None
 
     model_config = {
         "arbitrary_types_allowed": True
     }
+
+
 
 class ArticleStatusUpdate(BaseModel):
     status: str = Field(..., description="Status can be: draft, pending, published, rejected")

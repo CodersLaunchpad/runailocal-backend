@@ -2,6 +2,7 @@ from typing import Dict, Optional
 from bson import ObjectId
 from fastapi import HTTPException
 
+from models.models import ArticleStatus
 from models.users_model import get_author_data
 
 
@@ -15,7 +16,7 @@ async def build_article_query(db, category: Optional[str] = None,
                        author: Optional[str] = None,
                        tag: Optional[str] = None,
                        featured: Optional[bool] = None,
-                       published_only: bool = True) -> Dict:
+                       status: Optional[ArticleStatus] = None,) -> Dict:
     """Build a query for filtering articles."""
     query = {}
     
@@ -52,8 +53,9 @@ async def build_article_query(db, category: Optional[str] = None,
         query["featured"] = featured
     
     # Uncomment if you want to filter published articles
-    # if published_only:
-    #     query["published_at"] = {"$ne": None}
+    # Filter by article status (using the enum value)
+    if status:
+        query["status"] = status.value
     
     return query
 

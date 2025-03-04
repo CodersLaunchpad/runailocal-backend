@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
 from models.article_model import build_article_query, enrich_article_data, get_article, get_category_data
-from models.models import clean_document, prepare_mongo_document
+from models.models import ArticleStatus, clean_document, prepare_mongo_document
 from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
 from helpers.auth import get_current_active_user, get_admin_user, get_author_user, get_current_user_optional
 from pymongo import ReturnDocument
@@ -127,6 +127,7 @@ async def create_article(
         article_doc["views"] = 0
         article_doc["likes"] = 0
         article_doc["comments"] = []
+        article_doc["bookmarked_by"] = []
         
         # Insert article into database
         result = await db.articles.insert_one(article_doc)
@@ -147,6 +148,7 @@ async def create_article(
                 "author_id": str(created_article["author_id"]),
                 "image": created_article["image"],
                 "read_time": created_article["read_time"],
+                "status": created_article["status"],
                 "created_at": created_article["created_at"].isoformat() if isinstance(created_article["created_at"], datetime) else created_article["created_at"],
                 "updated_at": created_article["updated_at"].isoformat() if isinstance(created_article["updated_at"], datetime) else created_article["updated_at"],
                 "views": created_article["views"],
@@ -167,7 +169,7 @@ async def read_articles(
     author: Optional[str] = None,
     tag: Optional[str] = None,
     featured: Optional[bool] = None,
-    published_only: bool = True,
+    article_status: Optional[ArticleStatus] = None,
     skip: int = 0,
     limit: int = 20,
     current_user: Optional[UserInDB] = Depends(get_current_user_optional),
@@ -177,7 +179,7 @@ async def read_articles(
     try:
         # Build query filter
         query = await build_article_query(
-            db, category, author, tag, featured, published_only
+            db, category, author, tag, featured, article_status
         )
         
         if query is None:
@@ -206,7 +208,7 @@ async def read_articles(
 @router.get("/{id_or_slug}", response_model=Dict[str, Any])
 async def read_article(
     id_or_slug: str,
-    published_only: bool = True,
+    article_status: Optional[ArticleStatus] = None,
     db = Depends(get_db)
 ):
     """Get a single article by ID or slug"""
@@ -220,8 +222,8 @@ async def read_article(
             query = {"slug": id_or_slug}
         
         # Apply published filter if needed
-        # if published_only:
-        #     query["published_at"] = {"$ne": None}
+        if status:
+            query["status"] = article_status.value
         
         # Find the article
         article = await db.articles.find_one(query)
