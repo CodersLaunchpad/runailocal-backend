@@ -1,10 +1,9 @@
 from enum import Enum
 from pydantic import BaseModel, Field, EmailStr, validator
 from pydantic import GetCoreSchemaHandler
-from typing import Annotated, List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any, ClassVar, Type
 from datetime import datetime, timezone
-from bson import ObjectId
-
+from pydantic_core import core_schema
 from bson import ObjectId
 
 # Helper functions to handle ObjectId
@@ -92,12 +91,29 @@ def clean_document(doc):
     else:
         return doc
 
-# Use Annotated to create a type that validates ObjectId strings
-PyObjectId = Annotated[str, Field(default_factory=lambda: str(ObjectId()))]
+# Custom PyObjectId class for Pydantic integration with MongoDB ObjectId
+class PyObjectId(str):
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, _source_type: Type[Any], _handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        return core_schema.union_schema([
+            # Accept ObjectId objects directly
+            core_schema.is_instance_schema(ObjectId),
+            # Also accept str instances that can be converted to ObjectId
+            core_schema.chain_schema([
+                core_schema.str_schema(),
+                core_schema.no_info_plain_validator_function(
+                    lambda v: ObjectId(v) if ObjectId.is_valid(v) else None
+                ),
+            ]),
+        ])
+    
+    # For better debugging
+    def __repr__(self) -> str:
+        return f"PyObjectId({super().__repr__()})"
 
 
-
-# Models
 class UserBase(BaseModel):
     username: str
     email: EmailStr
@@ -166,7 +182,7 @@ class NormalUserDetails(BaseModel):
     }
 
 class UserInDB(UserBase):
-    id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
     password_hash: str
     user_type: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -175,14 +191,14 @@ class UserInDB(UserBase):
     favorites: List[PyObjectId] = []
     following: List[PyObjectId] = []
     followers: List[PyObjectId] = []
-    profile_picture_base64:  str
+    profile_picture_base64: str
     bookmarks: List[PyObjectId] = []
 
     # Add validators to ensure ObjectId conversion in lists
     @validator('following', 'favorites', 'followers', 'bookmarks', pre=True)
     def convert_object_ids(cls, v):
         if isinstance(v, list):
-            return [PyObjectId(x) for x in v]
+            return [ObjectId(x) if not isinstance(x, ObjectId) else x for x in v]
         return v
 
     model_config = {
@@ -252,7 +268,15 @@ class CategoryCreate(CategoryBase):
     pass
 
 class CategoryInDB(CategoryBase):
-    id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "json_encoders": {
+            ObjectId: str
+        }
+    }
 
 class CategoryResponse(CategoryBase):
     id: str
@@ -261,7 +285,7 @@ class CategoryResponse(CategoryBase):
         # This lets you map fields from the source model to different names
         field_customizations = {
             "id": {"alias": "_id"}
-        }
+    }
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
@@ -296,14 +320,12 @@ class ArticleBase(BaseModel):
     read_time: str
     status: ArticleStatus
 
-
     model_config = {
         "arbitrary_types_allowed": True
     }
 
 class ArticleCreate(ArticleBase):
     status: ArticleStatus = ArticleStatus.draft  # Default is "draft"
-    pass
 
 class ArticleImage(BaseModel):
     url: str
@@ -316,7 +338,7 @@ class ArticleImage(BaseModel):
     }
 
 class ArticleInDB(ArticleBase):
-    id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
     author_id: PyObjectId
     images: List[ArticleImage] = []
     published_at: Optional[datetime] = None
@@ -326,7 +348,13 @@ class ArticleInDB(ArticleBase):
     status: ArticleStatus
     bookmarked_by: List[PyObjectId] = []
 
-    
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "json_encoders": {
+            ObjectId: str
+        }
+    }
 
 class ArticleUpdate(BaseModel):
     name: Optional[str] = None
@@ -344,8 +372,6 @@ class ArticleUpdate(BaseModel):
         "arbitrary_types_allowed": True
     }
 
-
-
 class ArticleStatusUpdate(BaseModel):
     status: str = Field(..., description="Status can be: draft, pending, published, rejected")
     featured: Optional[bool] = None
@@ -362,7 +388,7 @@ class CommentCreate(BaseModel):
     }
 
 class CommentInDB(BaseModel):
-    id: PyObjectId = Field(default_factory=lambda: str(ObjectId()))
+    id: PyObjectId = Field(default_factory=lambda: ObjectId())
     text: str
     user_id: PyObjectId
     username: str
@@ -383,7 +409,7 @@ class MessageCreate(BaseModel):
     }
 
 class MessageInDB(BaseModel):
-    id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
     sender_id: PyObjectId
     recipient_id: PyObjectId
     text: str

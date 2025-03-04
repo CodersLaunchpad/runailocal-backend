@@ -90,9 +90,16 @@ async def create_article(
     The category_id and author_id are converted from string to ObjectId.
     """
     try:
-        # Convert string IDs to ObjectIds
-        category_id = ensure_object_id(article.category_id)
-        author_id = ensure_object_id(article.author_id)
+        # Convert string IDs to ObjectIds with proper error handling
+        try:
+            category_id = ensure_object_id(article.category_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid category_id: {article.category_id}")
+            
+        try:
+            author_id = ensure_object_id(article.author_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid author_id: {article.author_id}")
         
         # Verify that category exists
         category = await db.categories.find_one({"_id": category_id})
@@ -160,8 +167,10 @@ async def create_article(
         
     except Exception as e:
         print(f"Error creating article: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
+
 
 @router.get("/", response_model=List[Dict[str, Any]])
 async def read_articles(

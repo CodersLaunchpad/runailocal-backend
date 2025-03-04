@@ -113,7 +113,7 @@ async def create_user(user: UserCreate, db = Depends(get_db)):
         created_user["_id"] = str(created_user["_id"])
 
     # return created_user
-    serializable_response = clean_document(prepare_mongo_document(create_user))
+    serializable_response = clean_document(prepare_mongo_document(created_user))
     return JSONResponse(content=serializable_response)
 
 @router.post("/register", response_model=Token)
@@ -487,7 +487,7 @@ async def get_favorites(
     for article_id in current_user.favorites:
         article = await db.articles.find_one({"_id": article_id})
         if article and article.get("published_at"):
-            favorite_articles.routerend(article)
+            favorite_articles.append(article)
     
     return favorite_articles
 
@@ -796,7 +796,8 @@ async def get_following(
     for author_id in current_user.following:
         author = await db.users.find_one({"_id": author_id})
         if author:
-            following_users.routerend(author)
+            # Fixed typo here: changed routerend to append
+            following_users.append(author)
     
     # return following_users
     serializable_response = clean_document(prepare_mongo_document(following_users))
