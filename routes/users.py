@@ -16,7 +16,6 @@ from pymongo import ReturnDocument
 from PIL import Image, ImageDraw, ImageFont
 
 router = APIRouter()
-
 # User routes
 @router.post("/", response_model=UserInDB)
 async def create_user(user: UserCreate, db = Depends(get_db)):
@@ -476,7 +475,7 @@ async def read_users_me(
     except Exception as e:
         print(f"Error getting user profile data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
+
 # TODO: rename to get_user_favorites
 @router.get("/me/favorites", response_model=List[ArticleInDB])
 async def get_favorites(
@@ -498,18 +497,24 @@ async def update_user(
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
+    
     update_data = {k: v for k, v in user_update.dict(exclude_unset=True).items() if v is not None}
+
+    # Hash the password if it's being updated
+    if "password" in update_data:
+        update_data["password_hash"] = get_password_hash(update_data.pop("password"))
     
     if update_data:
         updated_user = await db.users.find_one_and_update(
-            {"_id": current_user.id},
+            {"_id": ensure_object_id(current_user.id)},
             {"$set": update_data},
             return_document=ReturnDocument.AFTER
         )
         if updated_user:
             # return updated_user
-            
+            print("hi")
             serializable_response = clean_document(prepare_mongo_document(updated_user))
+            print(serializable_response)
             return JSONResponse(content=serializable_response)
     
     # return current_user
