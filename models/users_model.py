@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, EmailStr, validator
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from utils.time import get_current_utc_time
+from datetime import datetime
 from bson import ObjectId
 
 class UserBase(BaseModel):
@@ -9,7 +10,6 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    is_active: bool = True
 
 class UserCreate(UserBase):
     """Model for creating a new user"""    
@@ -32,8 +32,17 @@ class UserResponse(UserBase):
     """Model for returning user information to clients"""
     id: str
     user_type: str
-    created_at: datetime
+    profile_picture_base64: str
+    user_details: Dict[str, Any] = {}
+    
+    likes: List[str] = []
+    following: List[str] = []
+    followers: List[str] = []
+    bookmarks: List[str] = []
+
+    is_active: bool = True
     last_login: Optional[datetime] = None
+    created_at: datetime
     
     # model_config helps with API docs
     model_config = {
@@ -48,7 +57,18 @@ class UserResponse(UserBase):
                     "user_type": "normal",
                     "created_at": "2023-01-01T00:00:00",
                     "last_login": "2023-01-02T12:30:45",
-                    "is_active": True
+                    "is_active": True,
+                    "user_details": {
+                        "type": "normal",
+                        "signup_date": get_current_utc_time(),
+                        "email_notifications": True,
+                        "reading_preferences": []
+                    },
+                    "profile_picture_base64": "base64",
+                    "bookmarks": ["341g1f77bcf86cd799439011"],
+                    "likes": ["341g1f77bcf86cd799439011"],
+                    "following": ["426h1f77bcf86cd799439011"],
+                    "followers": ["426h1f77bcf86cd799439011"]
                 }
             ]
         }

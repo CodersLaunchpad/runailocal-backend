@@ -1,29 +1,22 @@
 # dependencies/auth.py
 from fastapi import Depends, HTTPException, status
 import jwt
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Annotated, Any
+from typing import Optional, Annotated
+from services.auth_service import AuthService
+from dependencies.user import get_user_repository
+from utils.security import verify_password
 
 from db.schemas.users_schema import UserInDB
-from .db import DB, get_db
+from .db import DB
 from config import (
     oauth2_scheme, 
     oauth2_scheme_optional,
-    pwd_context, 
     JWT_SECRET_KEY, 
     JWT_ALGORITHM
 )
-from models.models import TokenData
+from models.auth_model import TokenData
 
 # Database dependency
-def get_password_hash(password: str) -> str:
-    """Hash a password for storing in the database."""
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a hash."""
-    return pwd_context.verify(plain_password, hashed_password)
-
 async def get_user(username: str, db: DB) -> Optional[UserInDB]:
     """
     Retrieve a user by username with case-insensitive matching.
@@ -45,18 +38,7 @@ async def authenticate_user(username: str, password: str, db: DB) -> Optional[Us
         return False
     return user
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(hours=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return encoded_jwt
-
-async def get_current_user(token: str = Depends(oauth2_scheme), db: DB = Depends(get_db)) -> UserInDB:
+async def get_current_user(token: str = Depends(oauth2_scheme), db: DB = None) -> UserInDB:
     """Get the current authenticated user from the JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,13 +66,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: DB = Depends
         
     return user
 
-async def get_current_active_user(current_user: Annotated[UserInDB, Depends(get_current_user)]) -> UserInDB:
+async def get_current_active_user(current_user = Depends(get_current_user)) -> UserInDB:
     """Get the current authenticated user and verify they are active."""
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-async def get_admin_user(current_user: Annotated[UserInDB, Depends(get_current_active_user)]) -> UserInDB:
+async def get_admin_user(current_user = Depends(get_current_active_user)) -> UserInDB:
     """Get the current authenticated user and verify they have admin privileges."""
     if current_user.user_type != "admin":
         raise HTTPException(
@@ -99,7 +81,7 @@ async def get_admin_user(current_user: Annotated[UserInDB, Depends(get_current_a
         )
     return current_user
 
-async def get_author_user(current_user: Annotated[UserInDB, Depends(get_current_active_user)]) -> UserInDB:
+async def get_author_user(current_user = Depends(get_current_active_user)) -> UserInDB:
     """Get the current authenticated user and verify they have author or admin privileges."""
     if current_user.user_type not in ["author", "admin"]:
         raise HTTPException(
@@ -110,7 +92,7 @@ async def get_author_user(current_user: Annotated[UserInDB, Depends(get_current_
 
 async def get_current_user_optional(
     token: str = Depends(oauth2_scheme_optional),
-    db: DB = Depends(get_db)
+    db: DB = None
 ) -> Optional[UserInDB]:
     """Similar to get_current_user but returns None when token is missing or invalid."""
     if not token:
@@ -126,9 +108,17 @@ async def get_current_user_optional(
     except jwt.PyJWTError:
         return None
 
+def get_auth_service(user_repo = Depends(get_user_repository)):
+    """
+    Dependency to get an auth service instance.
+    """
+    return AuthService(user_repo)
+
 # Create annotated types for cleaner dependency injection
 CurrentUser = Annotated[UserInDB, Depends(get_current_user)]
 CurrentActiveUser = Annotated[UserInDB, Depends(get_current_active_user)]
 OptionalUser = Annotated[Optional[UserInDB], Depends(get_current_user_optional)]
 AdminUser = Annotated[UserInDB, Depends(get_admin_user)]
 AuthorUser = Annotated[UserInDB, Depends(get_author_user)]
+
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]

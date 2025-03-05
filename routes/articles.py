@@ -8,8 +8,9 @@ from typing import Any, Dict, List, Optional
 from fastapi.responses import JSONResponse
 from models.article_model import build_article_query, enrich_article_data, get_article, get_category_data
 from models.models import ArticleStatus, clean_document, prepare_mongo_document
-from models.models import PyObjectId, UserInDB, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
-from helpers.auth import get_current_active_user, get_admin_user, get_author_user, get_current_user_optional
+from models.models import PyObjectId, ArticleInDB, ArticleCreate, ArticleUpdate, ensure_object_id
+from db.schemas.users_schema import UserInDB
+from dependencies.auth import get_current_active_user, get_admin_user, get_author_user, get_current_user_optional
 from pymongo import ReturnDocument
 from db.db import get_db
 
@@ -609,48 +610,50 @@ async def delete_article_image(
         raise HTTPException(status_code=400, detail="Invalid article ID or image index")
 
 # Favorite articles
-@router.post("/{article_id}/favorite", status_code=status.HTTP_200_OK)
+@router.post("/{article_id}/like", status_code=status.HTTP_200_OK)
 async def favorite_article(
     article_id: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(article_id)
+        object_id = ObjectId(article_id)
         
         # Check if article exists
         article = await db.articles.find_one({"_id": object_id})
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        # Add article to favorites if not already favorited
-        if object_id not in current_user.favorites:
+        # Add article to likes if not already liked
+        if object_id not in current_user.likes:
             await db.users.update_one(
                 {"_id": current_user.id},
-                {"$addToSet": {"favorites": object_id}}
+                {"$addToSet": {"likes": object_id}}
             )
-            return {"status": "success", "message": "Article added to favorites"}
+            return {"status": "success", "message": "Article added to likes"}
         else:
-            return {"status": "info", "message": "Article already in favorites"}
-    except:
-        raise HTTPException(status_code=400, detail="Invalid article ID")
+            return {"status": "info", "message": "Article already in likes"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid article ID - {e}")
 
-@router.post("/{article_id}/unfavorite", status_code=status.HTTP_200_OK)
+@router.post("/{article_id}/unlike", status_code=status.HTTP_200_OK)
 async def unfavorite_article(
     article_id: str,
     current_user: UserInDB = Depends(get_current_active_user),
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(article_id)
+        object_id = ObjectId(article_id)
         
-        # Remove article from favorites
+        # Remove article from likes
         await db.users.update_one(
             {"_id": current_user.id},
-            {"$pull": {"favorites": object_id}}
+            {"$pull": {"likes": object_id}}
         )
         
-        return {"status": "success", "message": "Article removed from favorites"}
+        return {"status": "success", "message": "Article removed from likes"}
     except:
         raise HTTPException(status_code=400, detail="Invalid article ID")
 
@@ -662,7 +665,7 @@ async def routerrove_article(
     db = Depends(get_db)
 ):
     try:
-        object_id = PyObjectId(article_id)
+        object_id = ObjectId(article_id)
         
         # routerrove article by setting published date
         updated_article = await db.articles.find_one_and_update(
@@ -679,5 +682,7 @@ async def routerrove_article(
                 raise HTTPException(status_code=400, detail="Article is already published")
         
         return updated_article
-    except:
-        raise HTTPException(status_code=400, detail="Invalid article ID")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid article ID - {e}")

@@ -18,5 +18,5 @@ def get_user_service(repo = Depends(get_user_repository)):
     return UserService(repo)
 
 # Create annotated types for cleaner dependency injection
-UserRepository = Annotated[UserRepository, Depends(get_user_repository)]
-UserService = Annotated[UserService, Depends(get_user_service)]
+UserRepositoryDep = Annotated[UserRepository, Depends(get_user_repository)]
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]

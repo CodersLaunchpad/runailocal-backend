@@ -1,5 +1,5 @@
 # dependencies/database.py
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from typing import Annotated
 
 async def get_db():

@@ -1,10 +1,9 @@
 from pydantic import BaseModel, Field, EmailStr, field_validator
-from typing import Annotated, List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
-from helpers.time import get_current_utc_time
+from utils.time import get_current_utc_time
 from bson import ObjectId
 from db.mongodb import PyObjectId
-from models.users_model import UserBase
 
 class UserInDB(BaseModel):
     """Database representation of a user document"""    
@@ -19,7 +18,7 @@ class UserInDB(BaseModel):
     profile_picture_base64:  Optional[str] = None 
 
     # Relationships with other users
-    favorites: List[PyObjectId] = []
+    likes: List[PyObjectId] = []
     following: List[PyObjectId] = []
     followers: List[PyObjectId] = []
     bookmarks: List[PyObjectId] = []
@@ -38,7 +37,7 @@ class UserInDB(BaseModel):
     }
 
     # NOTE: if you add a new list of IDs, add the field in this field validator
-    @field_validator('favorites', 'following', 'followers', 'bookmarks', mode='before')
+    @field_validator('likes', 'following', 'followers', 'bookmarks', mode='before')
     @classmethod
     def convert_object_ids(cls, v):
         """Ensure lists of IDs are properly handled"""

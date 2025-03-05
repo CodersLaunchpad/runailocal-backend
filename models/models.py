@@ -114,41 +114,6 @@ class PyObjectId(str):
         return f"PyObjectId({super().__repr__()})"
 
 
-class UserBase(BaseModel):
-    username: str
-    email: EmailStr
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    is_active: bool = True
-
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "populate_by_name": True
-    }
-
-class UserCreate(UserBase):
-    password: str
-    user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
-    region: Optional[str] = None
-    profile_picture: Optional[str] = None
-    profile_picture_initials: Optional[str] = None
-    date_of_birth: str
-
-# class UserCreate(BaseModel):
-#     password: str
-#     user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
-#     region: Optional[str] = None
-#     username: str
-#     email: EmailStr
-#     first_name: Optional[str] = None
-#     last_name: Optional[str] = None
-#     is_active: bool = True
-
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "populate_by_name": True
-    }
-
 class AuthorDetails(BaseModel):
     bio: Optional[str] = None
     slug: Optional[str] = None
@@ -180,78 +145,6 @@ class NormalUserDetails(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
-
-class OldUserInDB(UserBase):
-    id: PyObjectId = Field(default_factory=lambda: ObjectId(), alias="_id")
-    password_hash: str
-    user_type: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_login: Optional[datetime] = None
-    user_details: Dict[str, Any] = {}
-    favorites: List[PyObjectId] = []
-    following: List[PyObjectId] = []
-    followers: List[PyObjectId] = []
-    profile_picture_base64: str
-    bookmarks: List[PyObjectId] = []
-
-    # Add validators to ensure ObjectId conversion in lists
-    @validator('following', 'favorites', 'followers', 'bookmarks', pre=True)
-    def convert_object_ids(cls, v):
-        if isinstance(v, list):
-            return [ObjectId(x) if not isinstance(x, ObjectId) else x for x in v]
-        return v
-
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "populate_by_name": True,
-        "json_encoders": {
-            ObjectId: str
-        },
-        # Add this to allow Pydantic to automatically convert ObjectId to string
-        "json_schema_extra": {
-            "example": {
-                "_id": "67beed4f38b4657e1f23cc80",
-                "password_hash": "hashed_password",
-                "created_at": "2023-01-01T00:00:00",
-                "user_details": {},
-                "favorites": [],
-                "following": [],
-                "bookmarks": []
-            }
-        }
-    }
-    
-    # Add this method to handle conversion
-    @classmethod
-    def model_validate(cls, obj, *args, **kwargs):
-        if isinstance(obj.get("_id"), ObjectId):
-            obj["_id"] = str(obj["_id"])
-        return super().model_validate(obj, *args, **kwargs)
-
-class OldUserUpdate(BaseModel):
-    username: Optional[str] = Field(None, description="User's username")
-    email: Optional[EmailStr] = Field(None, description="User's email address")
-    first_name: Optional[str] = Field(None, description="User's first name")
-    last_name: Optional[str] = Field(None, description="User's last name")
-    password: Optional[str] = Field(None, description="User's password")
-    profile_picture: Optional[str] = Field(None, description="Base64 encoded profile picture")
-    bio: Optional[str] = Field(None, description="User's bio")
-    user_details: Optional[Dict[str, Any]] = None
-
-
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
-
-class Token(BaseModel):
-    access_token: str
-    profile_picture_base64: str
-    token_type: str
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-    user_id: Optional[str] = None
-    user_type: Optional[str] = None
 
 class CategoryBase(BaseModel):
     name: str
@@ -378,27 +271,6 @@ class ArticleStatusUpdate(BaseModel):
     is_popular: Optional[bool] = None
     is_spotlight: Optional[bool] = None
     rejection_reason: Optional[str] = None
-
-class CommentCreate(BaseModel):
-    text: str
-    article_id: PyObjectId
-
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
-
-class CommentInDB(BaseModel):
-    id: PyObjectId = Field(default_factory=lambda: ObjectId())
-    text: str
-    user_id: PyObjectId
-    username: str
-    user_type: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = None
-
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
 
 class MessageCreate(BaseModel):
     recipient_id: PyObjectId
