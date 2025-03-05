@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Response, status, Depends
 from datetime import datetime, timezone
-from models.models import PyObjectId, MessageCreate, MessageInDB, UserInDB
-from helpers.auth import get_current_active_user
+from models.models import PyObjectId, MessageCreate, MessageInDB
+from db.schemas.users_schema import UserInDB
+from dependencies.auth import get_current_active_user
 from typing import List
 from pymongo import ReturnDocument
 from db.db import get_db

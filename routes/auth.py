@@ -1,48 +1,40 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from models.models import Token
-from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, HTTPException, status, Form
+from datetime import timedelta
 
-from fastapi.security import OAuth2PasswordRequestForm
-from helpers.auth import create_access_token, authenticate_user
-from db.db import get_db
+from models.auth_model import Token
+from dependencies.auth import AuthServiceDep
 
-from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+from dependencies.db import DB
 
 router = APIRouter()
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
-    # print(form_data)
-    user = await authenticate_user(form_data.username, form_data.password, db)
-    if not user:
+async def login_for_access_token(
+    username: str = Form(...),
+    password: str = Form(...),
+    auth_service: AuthServiceDep = None
+):
+    """
+    Authenticate user and return JWT access token
+    """
+    try:
+        token = await auth_service.generate_user_token(username, password)
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return token
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve status code and detail
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication error: {str(e)}"
         )
-    
-    # Update last login time
-    await db.users.update_one(
-        {"_id": user.id}, 
-        {"$set": {"last_login": datetime.now(timezone.utc)}}
-    )
-    
-    # access_token_expires = timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token_expires = timedelta(hours=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={
-            "sub": user.username, 
-            "id": str(user.id), 
-            # "type": user.user_details.get("type", "normal"),
-            "type": user.user_type
-        },
-        expires_delta=access_token_expires
-    )
-    print("profile_picture_base64", user.profile_picture_base64)
-    # return {"access_token": access_token, "token_type": "bearer", "profile_picture_base64": user.profile_picture_base64}
-    data_to_return = {"access_token": access_token, "token_type": "bearer", "profile_picture_base64": user.profile_picture_base64}
-    print("data to return", data_to_return)
-    return data_to_return
 
 @router.get("/check-availability")
 async def check_availability(
@@ -50,7 +42,7 @@ async def check_availability(
     field: str, 
     value: str,
     case_sensitive: bool = False,
-    db = Depends(get_db)
+    db = DB
 ):
     """
     Check if a given value for a specified field is available in a collection.

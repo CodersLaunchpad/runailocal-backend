@@ -1,5 +1,78 @@
-from typing import Dict
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional, Dict, Any
+from utils.time import get_current_utc_time
+from datetime import datetime
 from bson import ObjectId
+
+class UserBase(BaseModel):
+    """Base user fields shared across different user models"""
+    username: str
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+class UserCreate(UserBase):
+    """Model for creating a new user"""    
+    password: str
+    user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
+    region: Optional[str] = None
+    profile_picture: Optional[str] = None
+    profile_picture_initials: Optional[str] = None
+    date_of_birth: str
+
+class UserUpdate(BaseModel):
+    """Model for updating an existing user"""
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    user_details: Optional[Dict[str, Any]] = None
+
+class UserResponse(UserBase):
+    """Model for returning user information to clients"""
+    id: str
+    user_type: str
+    profile_picture_base64: str
+    user_details: Dict[str, Any] = {}
+    
+    likes: List[str] = []
+    following: List[str] = []
+    followers: List[str] = []
+    bookmarks: List[str] = []
+
+    is_active: bool = True
+    last_login: Optional[datetime] = None
+    created_at: datetime
+    
+    # model_config helps with API docs
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "507f1f77bcf86cd799439011",
+                    "username": "johndoe",
+                    "email": "john@example.com",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "user_type": "normal",
+                    "created_at": "2023-01-01T00:00:00",
+                    "last_login": "2023-01-02T12:30:45",
+                    "is_active": True,
+                    "user_details": {
+                        "type": "normal",
+                        "signup_date": get_current_utc_time(),
+                        "email_notifications": True,
+                        "reading_preferences": []
+                    },
+                    "profile_picture_base64": "base64",
+                    "bookmarks": ["341g1f77bcf86cd799439011"],
+                    "likes": ["341g1f77bcf86cd799439011"],
+                    "following": ["426h1f77bcf86cd799439011"],
+                    "followers": ["426h1f77bcf86cd799439011"]
+                }
+            ]
+        }
+    }
 
 
 async def get_author_data(db, author_id: ObjectId) -> Dict:

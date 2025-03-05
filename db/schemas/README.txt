@@ -1,0 +1,1 @@
+This folder defines how data is stored in the DB

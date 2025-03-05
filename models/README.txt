@@ -1,0 +1,1 @@
+This folder defines what the models used throughout the app and what the API exposes to clients
