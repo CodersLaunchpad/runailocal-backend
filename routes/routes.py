@@ -6,6 +6,7 @@ from .categories import router as categories_router
 from .comments import router as comments_router
 from .messages import router as messages_router
 from .storage import router as storage_router
+from .test import router as test_router
 
 def setup_routes(app: FastAPI):
     # You can add other routes directly to app here if needed
@@ -54,4 +55,10 @@ def setup_routes(app: FastAPI):
         storage_router,
         prefix="/storage",
         tags=["storage"],
+    )
+
+    app.include_router(
+        test_router,
+        prefix="/test",
+        tags=["test"],
     )
