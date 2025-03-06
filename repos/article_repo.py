@@ -1,0 +1,532 @@
+from fastapi import HTTPException
+from typing import Dict, Any, Optional, List
+from bson import ObjectId
+from pymongo import ReturnDocument
+from utils.time import get_current_utc_time 
+from models.models import ArticleStatus, clean_document, prepare_mongo_document
+from models.article_model import enrich_article_data
+
+class ArticleRepository:
+    """
+    Repository for article-related database operations
+    Handles all direct interactions with the database for articles
+    """
+    
+    def __init__(self, db):
+        self.db = db
+    
+    async def create_article(self, article_dict: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Create a new article
+            Returns the created article
+            """
+            try:
+                # Insert article into database
+                result = await self.db.articles.insert_one(article_dict)
+                
+                # Get the created article
+                created_article = await self.db.articles.find_one({"_id": result.inserted_id})
+                
+                # Clean the document before returning
+                return clean_document(prepare_mongo_document(created_article))
+            except Exception as e:
+                raise Exception(f"Error creating article: {str(e)}")
+        
+    async def get_article_by_id(self, article_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get an article by ID
+        Returns the article if found, None otherwise
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Get the article
+            article = await self.db.articles.find_one({"_id": article_object_id})
+            
+            if not article:
+                return None
+                
+            # Clean the document before returning
+            return clean_document(article)
+        except Exception as e:
+            raise Exception(f"Error in get_article_by_id: {str(e)}")
+
+    async def get_article_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+        """
+        Get an article by slug
+        Returns the article if found, None otherwise
+        """
+        try:
+            # Get the article
+            article = await self.db.articles.find_one({"slug": slug})
+            
+            if not article:
+                return None
+                
+            # Clean the document before returning
+            return clean_document(article)
+        except Exception as e:
+            raise Exception(f"Error in get_article_by_slug: {str(e)}")
+
+    async def get_article_by_id_or_slug(self, id_or_slug: str, article_status: Optional[ArticleStatus] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get an article by ID or slug with optional status filter
+        Returns the article if found, None otherwise
+        """
+        try:
+            # Check if the id_or_slug is a valid ObjectId
+            if ObjectId.is_valid(id_or_slug):
+                # Search by ID
+                query = {"_id": ObjectId(id_or_slug)}
+            else:
+                # Search by slug
+                query = {"slug": id_or_slug}
+            
+            # Apply published filter if needed
+            if article_status:
+                query["status"] = article_status.value
+            
+            # Find the article
+            article = await self.db.articles.find_one(query)
+            
+            if not article:
+                return None
+                
+            # Clean the document before returning
+            return clean_document(prepare_mongo_document(article))
+        except Exception as e:
+            raise Exception(f"Error in get_article_by_id_or_slug: {str(e)}")    
+
+    async def check_article_exists(self, article_id: str) -> bool:
+        """
+        Check if an article exists
+        Returns True if the article exists, False otherwise
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Check if the article exists
+            count = await self.db.articles.find_one({"_id": article_object_id})
+            
+            return count > 0
+        except Exception as e:
+            raise Exception(f"Error in check_article_exists: {str(e)}")
+        
+    async def build_query(self, 
+                        category: Optional[str] = None,
+                        author: Optional[str] = None,
+                        tag: Optional[str] = None,
+                        featured: Optional[bool] = None,
+                        status: Optional[ArticleStatus] = None) -> Dict[str, Any]:
+        """
+        Build a query for filtering articles
+        Returns None if category or author does not exist
+        """
+        query = {}
+    
+        # Filter by category
+        if category:
+            if ObjectId.is_valid(category):
+                query["category_id"] = ObjectId(category)
+            else:
+                # Find category by slug
+                category_obj = await self.db.categories.find_one({"slug": category})
+                if category_obj:
+                    query["category_id"] = category_obj["_id"]
+                else:
+                    return None  # No matching category found
+        
+        # Filter by author
+        if author:
+            if ObjectId.is_valid(author):
+                query["author_id"] = ObjectId(author)
+            else:
+                # Find author by username
+                author_obj = await self.db.users.find_one({"username": author})
+                if author_obj:
+                    query["author_id"] = author_obj["_id"]
+                else:
+                    return None  # No matching author found
+        
+        # Filter by tag
+        if tag:
+            query["tags"] = tag
+        
+        # Filter by featured status
+        if featured is not None:
+            query["featured"] = featured
+        
+        # Uncomment if you want to filter published articles
+        # Filter by article status (using the enum value)
+        # Filter by article status (if provided)
+        if status is not None:
+            # Use status.value if available, otherwise assume status is already a string
+            query["status"] = status.value if hasattr(status, "value") else status
+        
+        return query
+    
+    async def get_articles(self, query: Dict[str, Any], skip: int = 0, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get a list of articles based on query
+        Returns a list of enriched articles
+        """
+        try:
+            # Fetch articles
+            cursor = self.db.articles.find(query).sort("created_at", -1).skip(skip).limit(limit)
+            
+            articles = []
+            async for article in cursor:
+                # Enrich article with related data
+                enriched_article = await enrich_article_data(self.db, article)
+                articles.append(prepare_mongo_document(enriched_article))
+            
+            return clean_document(articles)
+        except Exception as e:
+            raise Exception(f"Error getting articles: {str(e)}")
+
+    async def enrich_article(self, article: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enrich an article with related data (category and author)
+        """
+        enriched_article = await enrich_article_data(self.db, article)
+        return clean_document(prepare_mongo_document(enriched_article))
+    
+    async def update_article(self, article_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an article
+        Returns the updated article
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Update the article
+            updated_article = await self.db.articles.find_one_and_update(
+                {"_id": article_object_id},
+                {"$set": update_data},
+                return_document=ReturnDocument.AFTER
+            )
+            
+            if not updated_article:
+                return None
+                
+            # Clean the document before returning
+            return clean_document(prepare_mongo_document(updated_article))
+        except Exception as e:
+            raise Exception(f"Error updating article: {str(e)}")
+    
+    async def get_articles_by_query(self, query: Dict[str, Any], sort_field: str = "created_at", limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get articles based on query with sorting and limit
+        Returns a list of enriched articles
+        """
+        try:
+            cursor = self.db.articles.find(query).sort(sort_field, -1).limit(limit)
+            
+            articles = []
+            async for article in cursor:
+                # Enrich article with related data
+                enriched_article = await enrich_article_data(self.db, article)
+                articles.append(prepare_mongo_document(enriched_article))
+            
+            return clean_document(articles)
+        except Exception as e:
+            raise Exception(f"Error getting articles by query: {str(e)}")
+    
+    async def get_articles_by_category(self, limit: int = 4) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get articles grouped by category
+        Returns a dictionary with category names as keys and lists of articles as values
+        """
+        try:
+            # Get all categories
+            categories = await self.db.categories.find().to_list(length=100)
+            
+            by_category = {}
+            for category in categories:
+                # Get articles for this category
+                cat_query = {"status": "published", "category_id": category["_id"]}
+                cursor = self.db.articles.find(cat_query).sort("updated_at", -1).limit(limit)
+                
+                cat_articles = []
+                async for article in cursor:
+                    enriched = await enrich_article_data(self.db, article)
+                    # Override category with the current category document
+                    enriched["category"] = prepare_mongo_document(category)
+                    cat_articles.append(enriched)
+                
+                # Only include categories with articles
+                if cat_articles:
+                    by_category[category["name"]] = clean_document(cat_articles)
+            
+            return by_category
+        except Exception as e:
+            raise Exception(f"Error getting articles by category: {str(e)}")
+    
+    async def delete_article(self, article_id: str) -> bool:
+        """
+        Delete an article
+        Returns True if deleted, False otherwise
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Delete the article
+            result = await self.db.articles.delete_one({"_id": article_object_id})
+            
+            # Return whether deletion was successful
+            return result.deleted_count > 0
+        except Exception as e:
+            raise Exception(f"Error deleting article: {str(e)}")
+    
+    async def remove_from_bookmarks(self, article_id: str) -> None:
+        """
+        Remove an article from all users' bookmarks
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Remove from bookmarks
+            await self.db.users.update_many(
+                {"bookmarks": article_object_id},
+                {"$pull": {"bookmarks": article_object_id}}
+            )
+        except Exception as e:
+            raise Exception(f"Error removing article from bookmarks: {str(e)}")            
+        
+    async def add_article_to_likes(self, article_id: str, user_id: str) -> Dict[str, str]:
+        """
+        Add an article to a user's likes
+        Returns status message
+        """
+        try:
+            # Convert IDs to ObjectId
+            article_object_id = ObjectId(article_id)
+            user_object_id = ObjectId(user_id)
+            
+            # Check if article exists
+            article = await self.db.articles.find_one({"_id": article_object_id})
+            if not article:
+                raise HTTPException(status_code=404, detail="Article not found")
+            
+            # Check if user has already liked the article
+            user = await self.db.users.find_one({"_id": user_object_id})
+            user_likes = user.get("likes", [])
+            
+            # Convert to ObjectId if needed
+            user_likes_obj = [ObjectId(str(like_id)) for like_id in user_likes]
+            
+            # Check if already liked
+            if article_object_id in user_likes_obj:
+                return {"status": "info", "message": "Article already in likes"}
+            
+            # Add to likes
+            await self.db.users.update_one(
+                {"_id": user_object_id},
+                {"$addToSet": {"likes": article_object_id}}
+            )
+            
+            # Increment article likes count
+            await self.db.articles.update_one(
+                {"_id": article_object_id},
+                {"$inc": {"likes": 1}}
+            )
+            
+            return {"status": "success", "message": "Article added to likes"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise Exception(f"Error adding article to likes: {str(e)}")
+    
+    async def remove_article_from_likes(self, article_id: str, user_id: str) -> Dict[str, str]:
+        """
+        Remove an article from a user's likes
+        Returns status message
+        """
+        try:
+            # Convert IDs to ObjectId
+            article_object_id = ObjectId(article_id)
+            user_object_id = ObjectId(user_id)
+            
+            # Remove from likes
+            result = await self.db.users.update_one(
+                {"_id": user_object_id},
+                {"$pull": {"likes": article_object_id}}
+            )
+            
+            # If article was removed, decrement likes count
+            if result.modified_count > 0:
+                await self.db.articles.update_one(
+                    {"_id": article_object_id},
+                    {"$inc": {"likes": -1}}
+                )
+            
+            return {"status": "success", "message": "Article removed from likes"}
+        except Exception as e:
+            raise Exception(f"Error removing article from likes: {str(e)}")
+    
+    async def get_article_likes_count(self, article_id: str) -> int:
+        """
+        Get the number of likes for an article
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Get the article
+            article = await self.db.articles.find_one(
+                {"_id": article_object_id},
+                projection={"likes": 1}
+            )
+            
+            if not article:
+                return 0
+                
+            return article.get("likes", 0)
+        except Exception as e:
+            raise Exception(f"Error getting article likes count: {str(e)}")
+        
+    async def get_article_likes_users(self, article_id: str) -> List[str]:
+        """
+        Get the list of user IDs who liked an article
+        Returns a list of user IDs as strings
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Find all users who have this article in their likes
+            cursor = self.db.users.find(
+                {"likes": article_object_id},
+                projection={"_id": 1}
+            )
+            
+            # Extract user IDs
+            user_ids = []
+            async for user in cursor:
+                user_ids.append(str(user["_id"]))
+                
+            return user_ids
+        except Exception as e:
+            raise Exception(f"Error getting users who liked the article: {str(e)}")        
+            
+    async def upload_article_image(self, article_id: str, file_path: str, is_main: bool, is_thumbnail: bool, caption: Optional[str]) -> Dict[str, Any]:
+        """
+        Add an image to an article
+        Returns the updated article
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Create image object
+            image = {
+                "url": file_path,
+                "is_main": is_main,
+                "is_thumbnail": is_thumbnail,
+                "caption": caption
+            }
+            
+            # If setting as main or thumbnail, unset others
+            if is_main:
+                await self.db.articles.update_one(
+                    {"_id": article_object_id, "images.is_main": True},
+                    {"$set": {"images.$.is_main": False}}
+                )
+            
+            if is_thumbnail:
+                await self.db.articles.update_one(
+                    {"_id": article_object_id, "images.is_thumbnail": True},
+                    {"$set": {"images.$.is_thumbnail": False}}
+                )
+            
+            # Add image to article
+            updated_article = await self.db.articles.find_one_and_update(
+                {"_id": article_object_id},
+                {"$push": {"images": image}},
+                return_document=ReturnDocument.AFTER
+            )
+            
+            if not updated_article:
+                return None
+                
+            # Clean the document before returning
+            return clean_document(prepare_mongo_document(updated_article))
+        except Exception as e:
+            raise Exception(f"Error uploading article image: {str(e)}")
+    
+    async def delete_article_image(self, article_id: str, image_index: int) -> Dict[str, Any]:
+        """
+        Delete an image from an article
+        Returns the updated article
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Get the article
+            article = await self.db.articles.find_one({"_id": article_object_id})
+            
+            if not article:
+                return None
+                
+            # Check if image index exists
+            images = article.get("images", [])
+            
+            if image_index < 0 or image_index >= len(images):
+                raise HTTPException(status_code=404, detail="Image not found")
+            
+            # Remove image from article
+            images.pop(image_index)
+            
+            # Update article
+            updated_article = await self.db.articles.find_one_and_update(
+                {"_id": article_object_id},
+                {"$set": {"images": images}},
+                return_document=ReturnDocument.AFTER
+            )
+            
+            # Clean the document before returning
+            return clean_document(prepare_mongo_document(updated_article))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise Exception(f"Error deleting article image: {str(e)}")
+            
+    async def approve_article(self, article_id: str) -> Dict[str, Any]:
+        """
+        Approve an article (admin function)
+        Returns the updated article
+        """
+        try:
+            # Convert article_id to ObjectId
+            article_object_id = ObjectId(article_id)
+            
+            # Approve article by setting status to published
+            updated_article = await self.db.articles.find_one_and_update(
+                {"_id": article_object_id, "status": "pending"},
+                {"$set": {"status": "published", "updated_at": get_current_utc_time()}},
+                return_document=ReturnDocument.AFTER
+            )
+            
+            if not updated_article:
+                article = await self.db.articles.find_one({"_id": article_object_id})
+                
+                if not article:
+                    raise HTTPException(status_code=404, detail="Article not found")
+                elif article.get("status") == "published":
+                    raise HTTPException(status_code=400, detail="Article is already published")
+                else:
+                    raise HTTPException(status_code=400, detail=f"Article is in {article.get('status')} status, cannot be approved")
+            
+            # Clean the document before returning
+            return clean_document(prepare_mongo_document(updated_article))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise Exception(f"Error approving article: {str(e)}")     
+        
