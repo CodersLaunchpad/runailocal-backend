@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from typing import Dict, List, Optional, Any
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -238,14 +239,57 @@ class UserRepository:
     
     async def get_user_likes(self, current_user: UserInDB) -> List[Dict[str, Any]]:
         """Get all liked articles for a user"""
-        liked_articles = []
-        
-        for article_id in current_user.likes:
-            article = await self.db.articles.find_one({"_id": article_id})
-            if article and article.get("published_at"):
-                liked_articles.append(article)
-        
-        return liked_articles
+        try:
+            liked_articles = []
+            
+            for article_id in current_user.likes:
+                try:
+                    # Convert to ObjectId if it's a string
+                    object_id = ensure_object_id(article_id)
+                    
+                    article = await self.db.articles.find_one({"_id": object_id})
+                    
+                    if article and article.get("status") == "published":
+                        # Clean the document to convert ObjectId to string and handle other MongoDB types
+                        cleaned_article = clean_document(prepare_mongo_document(article))
+                        
+                        # Get the related category
+                        category_data = None
+                        if "category_id" in article:
+                            category = await self.db.categories.find_one({"_id": article["category_id"]})
+                            if category:
+                                category_data = clean_document(prepare_mongo_document(category))
+                        
+                        # Get the related author
+                        author_data = None
+                        if "author_id" in article:
+                            author = await self.db.users.find_one(
+                                {"_id": article["author_id"]},
+                                projection={
+                                    "_id": 1,
+                                    "username": 1,
+                                    "first_name": 1,
+                                    "last_name": 1,
+                                    "profile_picture_base64": 1
+                                }
+                            )
+                            if author:
+                                author_data = clean_document(prepare_mongo_document(author))
+                        
+                        # Add related data to article
+                        cleaned_article["category"] = category_data
+                        cleaned_article["author"] = author_data
+                        
+                        liked_articles.append(cleaned_article)
+                except Exception as e:
+                    # Skip problematic articles but continue processing
+                    print(f"Error processing liked article {article_id}: {str(e)}")
+                    continue
+            
+            return liked_articles
+            
+        except Exception as e:
+            raise Exception(f"Error getting user likes: {str(e)}")
     
     async def update_user(self, user_id: str, update_data: Dict[str, Any]) -> Optional[UserInDB]:
         """
@@ -272,7 +316,7 @@ class UserRepository:
             
         except Exception as e:
             raise Exception(f"Error updating user: {str(e)}")
-    
+
     async def get_user_by_id(self, user_id: str) -> Optional[UserInDB]:
         """
         Get a user by ID
@@ -296,6 +340,25 @@ class UserRepository:
         except Exception as e:
             raise ValueError(f"Invalid user ID: {str(e)}")
     
+    async def validate_user(self, user_id: str) -> None:
+        """
+        Validate that an author exists
+        Raises HTTPException if author is invalid or not found
+        """
+        try:
+            author_id_obj = ObjectId(user_id)
+            
+            author = await self.db.users.find_one(
+                {"_id": author_id_obj},
+                projection={"_id": 1}
+            )
+            if not author:
+                raise HTTPException(status_code=404, detail="User not found")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise Exception(f"Error validating user: {str(e)}")
+
     async def get_all_users(self) -> List[UserInDB]:
         """
         Get all users (admin function)
@@ -848,3 +911,15 @@ class UserRepository:
             raise e
         except Exception as e:
             raise Exception(f"Error getting bookmarks: {str(e)}")
+        
+    async def decrement_author_articles_count(self, author_id: ObjectId) -> None:
+        """
+        Decrement an author's article count
+        """
+        try:
+            await self.db.users.update_one(
+                {"_id": author_id},
+                {"$inc": {"user_details.articles_count": -1}}
+            )
+        except Exception as e:
+            raise Exception(f"Error decrementing author's article count: {str(e)}")    

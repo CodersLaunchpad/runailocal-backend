@@ -47,11 +47,11 @@ async def read_users_me(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
-@router.get("/me/likes", response_model=List[ArticleInDB])
+@router.get("/me/likes", response_model=List[Dict[str, Any]])
 async def get_likes(
     current_user: CurrentActiveUser, user_service: UserServiceDep
 ):
-    """Get current user's favorite articles"""
+    """Get current user's liked articles"""
     try:
         likes = await user_service.get_user_likes(current_user)
         return likes

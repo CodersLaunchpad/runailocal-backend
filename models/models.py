@@ -210,7 +210,7 @@ class ArticleBase(BaseModel):
     category_id: str
     author_id: str
     image: str
-    read_time: str
+    read_time: int
     status: ArticleStatus
 
     model_config = {

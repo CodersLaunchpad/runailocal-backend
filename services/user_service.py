@@ -164,7 +164,7 @@ class UserService:
         return await self.user_repo.get_user_profile(user_id)
     
     async def get_user_likes(self, current_user: UserInDB) -> List[Dict[str, Any]]:
-        """Get favorite articles for a user"""
+        """Get liked articles for a user"""
         return await self.user_repo.get_user_likes(current_user)
     
     async def update_user(self, user_id: str, user_update: UserUpdate) -> Dict[str, Any]:
