@@ -31,6 +31,31 @@ class ArticleRepository:
             is_bookmarked = False
         return is_bookmarked
     
+    def check_if_liked(self, article, current_user):
+        """
+        Check if an article is liked by the current user and return the total like count
+        Returns a tuple of (is_liked, like_count)
+        """
+        # Initialize like count from the liked_by array
+        liked_by = article.get("liked_by", [])
+        like_count = len(liked_by)
+        
+        # Check if user has liked the article
+        if current_user is not None:
+            try:
+                user_id = ObjectId(current_user.id)
+                # Check if user's ID is in the liked_by array
+                # Set is_liked to True only if user_id is found in liked_by
+                is_liked = any(str(liker_id) == str(user_id) for liker_id in liked_by)
+            except:
+                # If ObjectId conversion fails, set is_liked to False
+                is_liked = False
+        else:
+            # If no current_user, set is_liked to False
+            is_liked = False
+        
+        return is_liked, like_count
+    
     async def create_article(self, article_dict: Dict[str, Any]) -> Dict[str, Any]:
             """
             Create a new article
@@ -111,6 +136,7 @@ class ArticleRepository:
             
             # Add is_bookmarked field if current_user is valid
             article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
+            article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
                 
             enriched_article = await enrich_article_data(self.db, article)
             
@@ -206,6 +232,7 @@ class ArticleRepository:
             async for article in cursor:
                 # Add is_bookmarked field if current_user is valid
                 article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
+                article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
                 
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -258,6 +285,7 @@ class ArticleRepository:
             async for article in cursor:
                 # Add is_bookmarked field if current_user is valid
                 article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
+                article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
                     
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -286,6 +314,7 @@ class ArticleRepository:
                 async for article in cursor:
                     # Add is_bookmarked field if current_user is valid
                     article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
+                    article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
                     
                     enriched = await enrich_article_data(self.db, article)
                     # Override category with the current category document
