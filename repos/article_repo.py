@@ -98,7 +98,10 @@ class ArticleRepository:
                 try:
                     user_id = ObjectId(current_user.id)
                     # Check if user's ID is in the bookmarks array
-                    bookmarks = article.get("bookmarks", [])
+                    bookmarks = article.get("bookmarked_by", [])
+                    for bookmark_id in bookmarks:
+                        print("checking a bookmark")
+                        print(f"User Object ID: {user_id}, bookmark id: {bookmark_id}")
                     # Set is_bookmarked to True only if user_id is found in bookmarks
                     article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
                 except:
@@ -205,7 +208,7 @@ class ArticleRepository:
                     try:
                         user_id = ObjectId(current_user.id)
                         # Check if user's ID is in the bookmarks array
-                        bookmarks = article.get("bookmarks", [])
+                        bookmarks = article.get("bookmarked_by", [])
                         # Set is_bookmarked to True only if user_id is found in bookmarks
                         article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
                     except:
@@ -269,7 +272,7 @@ class ArticleRepository:
                     try:
                         user_id = ObjectId(current_user.id)
                         # Check if user's ID is in the bookmarks array
-                        bookmarks = article.get("bookmarks", [])
+                        bookmarks = article.get("bookmarked_by", [])
                         # Set is_bookmarked to True only if user_id is found in bookmarks
                         article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
                     except:
@@ -309,7 +312,7 @@ class ArticleRepository:
                         try:
                             user_id = ObjectId(current_user.id)
                             # Check if user's ID is in the bookmarks array
-                            bookmarks = article.get("bookmarks", [])
+                            bookmarks = article.get("bookmarked_by", [])
                             # Set is_bookmarked to True only if user_id is found in bookmarks
                             article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
                         except:
