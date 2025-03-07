@@ -98,9 +98,10 @@ class ArticleService:
                 return None
                 
             # Enrich article with related data
-            enriched_article = await self.article_repo.enrich_article(article)
+            # enriched_article = await self.article_repo.enrich_article(article)
             
-            return enriched_article
+            # return enriched_article
+            return article
             
         except Exception as e:
             raise e
