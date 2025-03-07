@@ -14,6 +14,22 @@ class ArticleRepository:
     
     def __init__(self, db):
         self.db = db
+
+    def check_if_bookmarked(self, article, current_user):
+        if current_user is not None:
+            try:
+                user_id = ObjectId(current_user.id)
+                # Check if user's ID is in the bookmarks array
+                bookmarks = article.get("bookmarked_by", [])
+                # Set is_bookmarked to True only if user_id is found in bookmarks
+                is_bookmarked = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
+            except:
+                # If ObjectId conversion fails, set is_bookmarked to False
+                is_bookmarked = False
+        else:
+            # If no current_user, set is_bookmarked to False
+            is_bookmarked = False
+        return is_bookmarked
     
     async def create_article(self, article_dict: Dict[str, Any]) -> Dict[str, Any]:
             """
@@ -94,22 +110,7 @@ class ArticleRepository:
                 return None
             
             # Add is_bookmarked field if current_user is valid
-            if current_user is not None:
-                try:
-                    user_id = ObjectId(current_user.id)
-                    # Check if user's ID is in the bookmarks array
-                    bookmarks = article.get("bookmarked_by", [])
-                    for bookmark_id in bookmarks:
-                        print("checking a bookmark")
-                        print(f"User Object ID: {user_id}, bookmark id: {bookmark_id}")
-                    # Set is_bookmarked to True only if user_id is found in bookmarks
-                    article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
-                except:
-                    # If ObjectId conversion fails, set is_bookmarked to False
-                    article["is_bookmarked"] = False
-            else:
-                # If no current_user, set is_bookmarked to False
-                article["is_bookmarked"] = False
+            article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                 
             enriched_article = await enrich_article_data(self.db, article)
             
@@ -204,19 +205,7 @@ class ArticleRepository:
             articles = []
             async for article in cursor:
                 # Add is_bookmarked field if current_user is valid
-                if current_user is not None:
-                    try:
-                        user_id = ObjectId(current_user.id)
-                        # Check if user's ID is in the bookmarks array
-                        bookmarks = article.get("bookmarked_by", [])
-                        # Set is_bookmarked to True only if user_id is found in bookmarks
-                        article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
-                    except:
-                        # If ObjectId conversion fails, set is_bookmarked to False
-                        article["is_bookmarked"] = False
-                else:
-                    # If no current_user, set is_bookmarked to False
-                    article["is_bookmarked"] = False
+                article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                 
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -268,19 +257,7 @@ class ArticleRepository:
             articles = []
             async for article in cursor:
                 # Add is_bookmarked field if current_user is valid
-                if current_user is not None:
-                    try:
-                        user_id = ObjectId(current_user.id)
-                        # Check if user's ID is in the bookmarks array
-                        bookmarks = article.get("bookmarked_by", [])
-                        # Set is_bookmarked to True only if user_id is found in bookmarks
-                        article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
-                    except:
-                        # If ObjectId conversion fails, set is_bookmarked to False
-                        article["is_bookmarked"] = False
-                else:
-                    # If no current_user, set is_bookmarked to False
-                    article["is_bookmarked"] = False
+                article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                     
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -308,19 +285,7 @@ class ArticleRepository:
                 cat_articles = []
                 async for article in cursor:
                     # Add is_bookmarked field if current_user is valid
-                    if current_user is not None:
-                        try:
-                            user_id = ObjectId(current_user.id)
-                            # Check if user's ID is in the bookmarks array
-                            bookmarks = article.get("bookmarked_by", [])
-                            # Set is_bookmarked to True only if user_id is found in bookmarks
-                            article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
-                        except:
-                            # If ObjectId conversion fails, set is_bookmarked to False
-                            article["is_bookmarked"] = False
-                    else:
-                        # If no current_user, set is_bookmarked to False
-                        article["is_bookmarked"] = False
+                    article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                     
                     enriched = await enrich_article_data(self.db, article)
                     # Override category with the current category document
