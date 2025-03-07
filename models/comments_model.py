@@ -5,6 +5,7 @@ from datetime import datetime
 class CommentBase(BaseModel):
     text: str
     article_id: str
+    parent_comment_id: Optional[str] = None
 
 class CommentCreate(CommentBase):
     pass

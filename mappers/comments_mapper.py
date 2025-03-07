@@ -18,6 +18,8 @@ def comment_db_to_response(comment_db: CommentInDB) -> CommentResponse:
         filtered_comment["user_id"] = str(filtered_comment["user_id"])
     if "article_id" in filtered_comment:
         filtered_comment["article_id"] = str(filtered_comment["article_id"])
+    if "parent_comment_id" in filtered_comment:
+        filtered_comment["parent_comment_id"] = str(filtered_comment["parent_comment_id"])
     
     return CommentResponse(**filtered_comment)
 
@@ -37,5 +39,8 @@ def prepare_comment_data(comment_dict: Dict[str, Any]) -> Dict[str, Any]:
     
     if "id" in prepared_data and isinstance(prepared_data["id"], str):
         prepared_data["id"] = convert_to_object_id(prepared_data["id"])
+    
+    if "parent_comment_id" in prepared_data and isinstance(prepared_data["parent_comment_id"], str):
+        prepared_data["parent_comment_id"] = convert_to_object_id(prepared_data["parent_comment_id"])
     
     return prepared_data

@@ -22,7 +22,7 @@ async def enrich_article_data(db, article: Dict) -> Dict:
     author_data = None
     if "author_id" in article:
         author_data = await get_author_data(db, article["author_id"])
-    
+
     # Build response
     return {
         **article,

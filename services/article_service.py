@@ -87,20 +87,21 @@ class ArticleService:
         except Exception as e:
             raise e
     
-    async def get_article_by_id_or_slug(self, id_or_slug: str, article_status: Optional[ArticleStatus] = None) -> Dict[str, Any]:
+    async def get_article_by_id_or_slug(self, id_or_slug: str, article_status: Optional[ArticleStatus] = None, current_user=None) -> Dict[str, Any]:
         """
         Get a single article by ID or slug
         """
         try:
-            article = await self.article_repo.get_article_by_id_or_slug(id_or_slug, article_status)
+            article = await self.article_repo.get_article_by_id_or_slug(id_or_slug, article_status, current_user=current_user)
             
             if not article:
                 return None
                 
             # Enrich article with related data
-            enriched_article = await self.article_repo.enrich_article(article)
+            # enriched_article = await self.article_repo.enrich_article(article)
             
-            return enriched_article
+            # return enriched_article
+            return article
             
         except Exception as e:
             raise e
@@ -152,7 +153,7 @@ class ArticleService:
         except Exception as e:
             raise e
     
-    async def get_home_page_articles(self) -> Dict[str, Any]:
+    async def get_home_page_articles(self, get_optional_current_user=None) -> Dict[str, Any]:
         """
         Get articles for the home page including spotlighted, popular, and articles by category
         """
@@ -161,18 +162,20 @@ class ArticleService:
             spotlighted = await self.article_repo.get_articles_by_query(
                 {"status": "published", "is_spotlight": True},
                 sort_field="updated_at",
-                limit=3
+                limit=3, 
+                current_user=get_optional_current_user
             )
             
             # Get popular articles (max 6)
             popular = await self.article_repo.get_articles_by_query(
                 {"status": "published", "is_popular": True},
                 sort_field="updated_at",
-                limit=6
+                limit=6, 
+                current_user=get_optional_current_user
             )
             
             # Get articles by category
-            by_category = await self.article_repo.get_articles_by_category(limit=4)
+            by_category = await self.article_repo.get_articles_by_category(limit=4, current_user=get_optional_current_user)
             
             # Build response
             result = {

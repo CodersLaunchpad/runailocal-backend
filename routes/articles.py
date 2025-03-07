@@ -1,13 +1,13 @@
 import os
 import uuid
-from fastapi import APIRouter, Body, File, Form, HTTPException, Response, status, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Response, status, UploadFile
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
-from models.models import ArticleStatus
+from models.models import ArticleStatus, clean_document
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
-from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser
+from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional
 
 router = APIRouter()
 
@@ -60,16 +60,17 @@ async def read_articles(
 async def read_article(
     id_or_slug: str,
     article_status: Optional[ArticleStatus] = None,
-    article_service: ArticleServiceDep = None
+    article_service: ArticleServiceDep = None,
+    current_optional_active_user= Depends(get_current_user_optional)
 ):
     """Get a single article by ID or slug"""
     try:
-        article = await article_service.get_article_by_id_or_slug(id_or_slug, article_status)
+        article = await article_service.get_article_by_id_or_slug(id_or_slug, article_status, current_optional_active_user)
         
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        return JSONResponse(content=article)
+        return JSONResponse(content=clean_document(article))
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -100,13 +101,16 @@ async def update_article(
 
 
 @router.get("/home/", response_model=Dict[str, Any])
-async def get_home_page_articles(article_service: ArticleServiceDep):
+async def get_home_page_articles(
+    article_service: ArticleServiceDep,
+    get_optional_current_user = Depends(get_current_user_optional)
+    ):
     """
     Get articles for the home page including spotlighted, popular,
     and articles grouped by category.
     """
     try:
-        home_data = await article_service.get_home_page_articles()
+        home_data = await article_service.get_home_page_articles(get_optional_current_user)
         return JSONResponse(content=home_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
