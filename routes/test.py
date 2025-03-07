@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Response
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status, Response, Form
 from fastapi.responses import JSONResponse, StreamingResponse, RedirectResponse
 from minio import Minio
 from minio.error import S3Error
@@ -12,6 +12,10 @@ import motor.motor_asyncio
 import pymongo
 import re
 import unicodedata
+
+from db.schemas.articles_schema import ArticleCreate
+from dependencies.article import ArticleServiceDep
+from dependencies.auth import CurrentActiveUser
 
 # Create router instead of app
 router = APIRouter()
@@ -117,6 +121,7 @@ async def generate_unique_file_id(collection):
             return file_id
 
 # Separate function for saving files to MinIO
+# Modified function with unique slug handling
 async def save_file_to_minio(
     file: UploadFile,
     file_id: str,
@@ -125,6 +130,7 @@ async def save_file_to_minio(
 ) -> Dict[str, Any]:
     """
     Upload a file to MinIO using a pre-generated file ID and return metadata.
+    Also ensures the slug is unique in MongoDB.
     
     Args:
         file: The file to upload
@@ -169,8 +175,20 @@ async def save_file_to_minio(
         expires=timedelta(hours=1)
     )
     
-    # Create a slug from the filename using our custom function
-    slug = create_slug(os.path.splitext(file.filename)[0])
+    # Create a base slug from the filename
+    base_slug = create_slug(os.path.splitext(file.filename)[0])
+    
+    # Ensure slug is unique in MongoDB
+    collection = get_mongo_client()
+    slug = base_slug
+    counter = 1
+    
+    # Check if the slug already exists
+    while await collection.find_one({"slug": slug}):
+        # If it exists, add a numeric suffix and try again
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+        print(f"Slug {base_slug} already exists, trying {slug}")
     
     # Get the current timestamp
     uploaded_at = datetime.utcnow()
@@ -412,3 +430,145 @@ async def get_file_by_id(file_id: str):
     # Convert ObjectId to string for JSON serialization
     file["_id"] = str(file["_id"])
     return file
+
+class ArticleCreate(BaseModel):
+    name: str
+    slug: str
+    excerpt: str
+    content: str
+    category_id: str
+    read_time: str
+    image: Optional[str] = None
+    
+
+@router.post("/submit-article", status_code=status.HTTP_201_CREATED)
+async def create_article_test(
+    name: str = Form(...),
+    slug: str = Form(...),
+    excerpt: str = Form(...),
+    content: str = Form(...),
+    category_id: str = Form(...),
+    read_time: str = Form(...),
+    user_id: str = Form(...),  # Add user_id as a form parameter
+    image: Optional[UploadFile] = File(None),
+    minio_client: Minio = Depends(get_minio_client)
+):
+    """
+    Test endpoint to create a new article with optional image upload.
+    This version doesn't rely on authentication or article service dependencies.
+    
+    The image file is uploaded to MinIO in a user_id/article_id folder structure.
+    """
+    try:
+        print(f"Starting article creation for user_id: {user_id}")
+        
+        # Create ArticleCreate object from form data
+        article_data = {
+            "name": name,
+            "slug": slug,
+            "excerpt": excerpt,
+            "content": content,
+            "category_id": category_id,
+            "read_time": read_time,
+        }
+        
+        print(f"Article data prepared: {article_data}")
+        
+        # Generate a unique article ID
+        article_id = str(uuid.uuid4())
+        print(f"Generated article_id: {article_id}")
+        
+        # Handle image upload if provided
+        if image and image.filename:
+            try:
+                print(f"Processing image upload: {image.filename}")
+                
+                # Get MongoDB collection for file metadata
+                mongo_collection = get_mongo_client()
+                print(f"MongoDB collection retrieved: {MONGO_COLLECTION}")
+                
+                # Generate a unique file ID
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"Generated file_id: {file_id}")
+                
+                # Organize by user_id/article_id/files
+                folder = f"{user_id}/{article_id}"
+                print(f"Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                file_data = await save_file_to_minio(image, file_id, folder, minio_client)
+                print(f"Image saved to MinIO: {file_data['object_name']}")
+                
+                # Store file metadata in MongoDB with additional user_id and article_id
+                file_data["user_id"] = user_id
+                file_data["article_id"] = article_id
+                
+                metadata_result = await store_file_metadata_in_mongodb(file_data, mongo_collection)
+                print(f"File metadata stored in MongoDB: {metadata_result}")
+                
+                # Set the image URL in the article data
+                article_data["image"] = file_data["url"]
+                print(f"Image URL added to article data: {article_data['image']}")
+                
+            except S3Error as err:
+                print(f"MinIO S3 error: {err}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error uploading image: {err}"
+                )
+            except Exception as e:
+                print(f"Error processing image: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing image: {str(e)}"
+                )
+            finally:
+                await image.close()
+        else:
+            print("No image provided with the article")
+        
+        # Add code here to save the article itself to MongoDB
+        try:
+            # Create a separate collection for articles
+            article_collection_name = "articles"
+            article_collection = get_mongo_client().database[article_collection_name]
+            
+            # Prepare the complete article document
+            article_doc = {
+                "id": article_id,
+                "user_id": user_id,
+                **article_data,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "status": "draft"  # Default status
+            }
+            
+            # Insert into MongoDB
+            article_result = await article_collection.insert_one(article_doc)
+            print(f"Article stored in MongoDB collection '{article_collection_name}' with ID: {article_result.inserted_id}")
+        except Exception as e:
+            print(f"Error saving article to MongoDB: {str(e)}")
+            # Continue processing - we'll still return a response even if MongoDB storage fails
+        
+        # Just create a simple response with the article data
+        # since we don't have the article service
+        response_data = {
+            "message": "Article created successfully",
+            "article": {
+                "id": article_id,
+                "user_id": user_id,
+                **article_data,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        }
+        
+        print(f"Returning response data: {response_data}")
+        return response_data
+        
+    except HTTPException as e:
+        print(f"HTTPException raised: {e.detail} (status_code: {e.status_code})")
+        raise e
+    except Exception as e:
+        print(f"Unexpected exception: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
