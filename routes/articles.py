@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Respons
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
-from models.models import ArticleStatus
+from models.models import ArticleStatus, clean_document
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
 from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional
@@ -70,7 +70,7 @@ async def read_article(
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
         
-        return JSONResponse(content=article)
+        return JSONResponse(content=clean_document(article))
     except HTTPException as e:
         raise e
     except Exception as e:
