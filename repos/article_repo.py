@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List
 from bson import ObjectId
 from pymongo import ReturnDocument
 from utils.time import get_current_utc_time 
-from models.models import ArticleStatus, clean_document, prepare_mongo_document
+from models.models import ArticleStatus, clean_document, ensure_object_id, prepare_mongo_document
 from models.article_model import enrich_article_data
 
 class ArticleRepository:
@@ -335,75 +335,130 @@ class ArticleRepository:
         
     async def add_article_to_likes(self, article_id: str, user_id: str) -> Dict[str, str]:
         """
-        Add an article to a user's likes
+        Add an article to a user's likes and update the article's liked_by list
         Returns status message
         """
         try:
             # Convert IDs to ObjectId
-            article_object_id = ObjectId(article_id)
-            user_object_id = ObjectId(user_id)
+            article_object_id = ensure_object_id(article_id)
+            user_object_id = ensure_object_id(user_id)
             
             # Check if article exists
             article = await self.db.articles.find_one({"_id": article_object_id})
             if not article:
-                raise HTTPException(status_code=404, detail="Article not found")
+                raise ValueError("Article not found")
             
-            # Check if user has already liked the article
+            # Get the user
             user = await self.db.users.find_one({"_id": user_object_id})
-            user_likes = user.get("likes", [])
+            if not user:
+                raise ValueError("User not found")
             
-            # Convert to ObjectId if needed
-            user_likes_obj = [ObjectId(str(like_id)) for like_id in user_likes]
+            # Convert likes list to ObjectId objects
+            user_likes = user.get("likes", [])
+            user_likes_obj = [ensure_object_id(str(like_id)) for like_id in user_likes]
+            
+            # Check if article's liked_by list exists
+            article_liked_by = article.get('liked_by', [])
+            article_liked_by_ids = [ensure_object_id(str(_id)) for _id in article_liked_by]
             
             # Check if already liked
-            if article_object_id in user_likes_obj:
-                return {"status": "info", "message": "Article already in likes"}
+            already_in_likes = article_object_id in user_likes_obj
+            already_in_liked_by = user_object_id in article_liked_by_ids
             
-            # Add to likes
-            await self.db.users.update_one(
-                {"_id": user_object_id},
-                {"$addToSet": {"likes": article_object_id}}
-            )
-            
-            # Increment article likes count
-            await self.db.articles.update_one(
-                {"_id": article_object_id},
-                {"$inc": {"likes": 1}}
-            )
-            
-            return {"status": "success", "message": "Article added to likes"}
-        except HTTPException:
-            raise
+            if not already_in_likes and not already_in_liked_by:
+                # Update user's likes list
+                user_result = await self.db.users.update_one(
+                    {"_id": user_object_id},
+                    {"$addToSet": {"likes": article_object_id}}
+                )
+                
+                # Update the article's liked_by list
+                article_result = await self.db.articles.update_one(
+                    {"_id": article_object_id},
+                    {"$addToSet": {"liked_by": user_object_id}}
+                )
+                
+                if user_result.modified_count and article_result.modified_count:
+                    return {"status": "success", "message": "Article liked successfully"}
+                elif user_result.modified_count:
+                    return {"status": "partial", "message": "Added to your likes, but couldn't update article's liked_by list"}
+                else:
+                    raise Exception("Failed to update likes/liked_by lists")
+            else:
+                # Handle different cases of partial relationship
+                if already_in_likes and not already_in_liked_by:
+                    # Fix one-sided relationship
+                    article_result = await self.db.articles.update_one(
+                        {"_id": article_object_id},
+                        {"$addToSet": {"liked_by": user_object_id}}
+                    )
+                    if article_result.modified_count:
+                        return {"status": "fixed", "message": "Fixed one-sided like relationship"}
+                    else:
+                        raise Exception("Failed to update article's liked_by list")
+                elif not already_in_likes and already_in_liked_by:
+                    # Fix one-sided relationship
+                    user_result = await self.db.users.update_one(
+                        {"_id": user_object_id},
+                        {"$addToSet": {"likes": article_object_id}}
+                    )
+                    if user_result.modified_count:
+                        return {"status": "fixed", "message": "Fixed one-sided like relationship"}
+                    else:
+                        raise Exception("Failed to update likes list")
+                else:
+                    return {"status": "info", "message": "Article already liked"}
+                
+        except ValueError as e:
+            raise e
         except Exception as e:
             raise Exception(f"Error adding article to likes: {str(e)}")
     
     async def remove_article_from_likes(self, article_id: str, user_id: str) -> Dict[str, str]:
         """
-        Remove an article from a user's likes
+        Remove an article from a user's likes and update the article's liked_by list
         Returns status message
         """
         try:
-            # Convert IDs to ObjectId
-            article_object_id = ObjectId(article_id)
-            user_object_id = ObjectId(user_id)
+            # Convert article_id to ObjectId
+            article_object_id = ensure_object_id(article_id)
             
-            # Remove from likes
-            result = await self.db.users.update_one(
+            # Check if article exists
+            article = await self.db.articles.find_one({"_id": article_object_id})
+            if not article:
+                raise ValueError("Article not found")
+            
+            # Get the user
+            user_object_id = ensure_object_id(user_id)
+            
+            # Remove article from user's likes list
+            user_result = await self.db.users.update_one(
                 {"_id": user_object_id},
                 {"$pull": {"likes": article_object_id}}
             )
             
-            # If article was removed, decrement likes count
-            if result.modified_count > 0:
-                await self.db.articles.update_one(
-                    {"_id": article_object_id},
-                    {"$inc": {"likes": -1}}
-                )
+            # Remove user from article's liked_by list
+            article_result = await self.db.articles.update_one(
+                {"_id": article_object_id},
+                {"$pull": {"liked_by": user_object_id}}
+            )
             
-            return {"status": "success", "message": "Article removed from likes"}
+            # Check results and return appropriate response
+            if user_result.modified_count and article_result.modified_count:
+                return {"status": "success", "message": "Article removed from likes successfully"}
+            elif user_result.modified_count:
+                return {"status": "partial", "message": "Removed from your likes, but couldn't update article's liked_by list"}
+            elif article_result.modified_count:
+                return {"status": "partial", "message": "Removed from article's liked_by list, but couldn't update your likes"}
+            else:
+                # If nothing was modified despite the checks indicating a relationship existed
+                return {"status": "warning", "message": "No changes made to like relationship"}
+                
+        except ValueError as e:
+            raise e
         except Exception as e:
             raise Exception(f"Error removing article from likes: {str(e)}")
-    
+        
     async def get_article_likes_count(self, article_id: str) -> int:
         """
         Get the number of likes for an article
