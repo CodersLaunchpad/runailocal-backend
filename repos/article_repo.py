@@ -93,8 +93,11 @@ class ArticleRepository:
             if not article:
                 return None
                 
+            enriched_article = await enrich_article_data(self.db, article)
+
             # Clean the document before returning
-            return clean_document(prepare_mongo_document(article))
+            # return clean_document(prepare_mongo_document(article))
+            return clean_document(prepare_mongo_document(enriched_article))
         except Exception as e:
             raise Exception(f"Error in get_article_by_id_or_slug: {str(e)}")    
 
