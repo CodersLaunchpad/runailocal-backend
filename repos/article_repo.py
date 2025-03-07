@@ -69,7 +69,7 @@ class ArticleRepository:
         except Exception as e:
             raise Exception(f"Error in get_article_by_slug: {str(e)}")
 
-    async def get_article_by_id_or_slug(self, id_or_slug: str, article_status: Optional[ArticleStatus] = None) -> Optional[Dict[str, Any]]:
+    async def get_article_by_id_or_slug(self, id_or_slug: str, article_status: Optional[ArticleStatus] = None, current_user=None) -> Optional[Dict[str, Any]]:
         """
         Get an article by ID or slug with optional status filter
         Returns the article if found, None otherwise
@@ -92,9 +92,28 @@ class ArticleRepository:
             
             if not article:
                 return None
+            
+            # Add is_bookmarked field if current_user is valid
+            if current_user is not None:
+                try:
+                    user_id = ObjectId(current_user.id)
+                    # Check if user's ID is in the bookmarks array
+                    bookmarks = article.get("bookmarks", [])
+                    # Set is_bookmarked to True only if user_id is found in bookmarks
+                    article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
+                except:
+                    # If ObjectId conversion fails, set is_bookmarked to False
+                    article["is_bookmarked"] = False
+            else:
+                # If no current_user, set is_bookmarked to False
+                article["is_bookmarked"] = False
                 
             enriched_article = await enrich_article_data(self.db, article)
-
+            
+            return prepare_mongo_document(enriched_article)
+        except Exception as e:
+            raise Exception(f"Error getting article by ID or slug: {str(e)}")
+    
             # Clean the document before returning
             # return clean_document(prepare_mongo_document(article))
             return clean_document(prepare_mongo_document(enriched_article))
@@ -170,7 +189,7 @@ class ArticleRepository:
         
         return query
     
-    async def get_articles(self, query: Dict[str, Any], skip: int = 0, limit: int = 20) -> List[Dict[str, Any]]:
+    async def get_articles(self, query: Dict[str, Any], skip: int = 0, limit: int = 20, current_user=None) -> List[Dict[str, Any]]:
         """
         Get a list of articles based on query
         Returns a list of enriched articles
@@ -181,6 +200,21 @@ class ArticleRepository:
             
             articles = []
             async for article in cursor:
+                # Add is_bookmarked field if current_user is valid
+                if current_user is not None:
+                    try:
+                        user_id = ObjectId(current_user.id)
+                        # Check if user's ID is in the bookmarks array
+                        bookmarks = article.get("bookmarks", [])
+                        # Set is_bookmarked to True only if user_id is found in bookmarks
+                        article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
+                    except:
+                        # If ObjectId conversion fails, set is_bookmarked to False
+                        article["is_bookmarked"] = False
+                else:
+                    # If no current_user, set is_bookmarked to False
+                    article["is_bookmarked"] = False
+                
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
                 articles.append(prepare_mongo_document(enriched_article))
@@ -220,7 +254,7 @@ class ArticleRepository:
         except Exception as e:
             raise Exception(f"Error updating article: {str(e)}")
     
-    async def get_articles_by_query(self, query: Dict[str, Any], sort_field: str = "created_at", limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_articles_by_query(self, query: Dict[str, Any], sort_field: str = "created_at", limit: int = 10, current_user=None) -> List[Dict[str, Any]]:
         """
         Get articles based on query with sorting and limit
         Returns a list of enriched articles
@@ -230,6 +264,21 @@ class ArticleRepository:
             
             articles = []
             async for article in cursor:
+                # Add is_bookmarked field if current_user is valid
+                if current_user is not None:
+                    try:
+                        user_id = ObjectId(current_user.id)
+                        # Check if user's ID is in the bookmarks array
+                        bookmarks = article.get("bookmarks", [])
+                        # Set is_bookmarked to True only if user_id is found in bookmarks
+                        article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
+                    except:
+                        # If ObjectId conversion fails, set is_bookmarked to False
+                        article["is_bookmarked"] = False
+                else:
+                    # If no current_user, set is_bookmarked to False
+                    article["is_bookmarked"] = False
+                    
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
                 articles.append(prepare_mongo_document(enriched_article))
@@ -238,35 +287,50 @@ class ArticleRepository:
         except Exception as e:
             raise Exception(f"Error getting articles by query: {str(e)}")
     
-    async def get_articles_by_category(self, limit: int = 4) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Get articles grouped by category
-        Returns a dictionary with category names as keys and lists of articles as values
-        """
-        try:
-            # Get all categories
-            categories = await self.db.categories.find().to_list(length=100)
+async def get_articles_by_category(self, limit: int = 4, current_user=None) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Get articles grouped by category
+    Returns a dictionary with category names as keys and lists of articles as values
+    """
+    try:
+        # Get all categories
+        categories = await self.db.categories.find().to_list(length=100)
+        
+        by_category = {}
+        for category in categories:
+            # Get articles for this category
+            cat_query = {"status": "published", "category_id": category["_id"]}
+            cursor = self.db.articles.find(cat_query).sort("updated_at", -1).limit(limit)
             
-            by_category = {}
-            for category in categories:
-                # Get articles for this category
-                cat_query = {"status": "published", "category_id": category["_id"]}
-                cursor = self.db.articles.find(cat_query).sort("updated_at", -1).limit(limit)
+            cat_articles = []
+            async for article in cursor:
+                # Add is_bookmarked field if current_user is valid
+                if current_user is not None:
+                    try:
+                        user_id = ObjectId(current_user.id)
+                        # Check if user's ID is in the bookmarks array
+                        bookmarks = article.get("bookmarks", [])
+                        # Set is_bookmarked to True only if user_id is found in bookmarks
+                        article["is_bookmarked"] = any(str(bookmark_id) == str(user_id) for bookmark_id in bookmarks)
+                    except:
+                        # If ObjectId conversion fails, set is_bookmarked to False
+                        article["is_bookmarked"] = False
+                else:
+                    # If no current_user, set is_bookmarked to False
+                    article["is_bookmarked"] = False
                 
-                cat_articles = []
-                async for article in cursor:
-                    enriched = await enrich_article_data(self.db, article)
-                    # Override category with the current category document
-                    enriched["category"] = prepare_mongo_document(category)
-                    cat_articles.append(enriched)
-                
-                # Only include categories with articles
-                if cat_articles:
-                    by_category[category["name"]] = clean_document(cat_articles)
+                enriched = await enrich_article_data(self.db, article)
+                # Override category with the current category document
+                enriched["category"] = prepare_mongo_document(category)
+                cat_articles.append(enriched)
             
-            return by_category
-        except Exception as e:
-            raise Exception(f"Error getting articles by category: {str(e)}")
+            # Only include categories with articles
+            if cat_articles:
+                by_category[category["name"]] = clean_document(cat_articles)
+        
+        return by_category
+    except Exception as e:
+        raise Exception(f"Error getting articles by category: {str(e)}")
     
     async def delete_article(self, article_id: str) -> bool:
         """
