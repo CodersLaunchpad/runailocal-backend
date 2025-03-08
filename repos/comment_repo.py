@@ -22,21 +22,23 @@ class CommentRepository:
             article_object_id = ObjectId(article_id)
             
             # Create comment object with a unique ID
-            comment_obj = {
-                "id": PyObjectId(),
-                **comment_data
-            }
+            # comment_obj = {
+            #     "id": PyObjectId(),
+            #     **comment_data
+            # }
             
-            # Add comment to article
-            result = await self.db.articles.update_one(
-                {"_id": article_object_id},
-                {"$push": {"comments": comment_obj}}
-            )
+            result = await self.db.comments.insert_one(comment_data)
+            # # Add comment to article
+            # result = await self.db.articles.update_one(
+            #     {"_id": article_object_id},
+            #     {"$push": {"comments": comment_obj}}
+            # )
+            created_comment = await self.db.comments.find_one({"_id": result.inserted_id})
+            if created_comment:
+                created_comment["_id"] = str(created_comment["_id"])  # Convert ObjectId to string
+
             
-            if result.modified_count == 0:
-                raise ValueError("Failed to add comment to article")
-            
-            return comment_obj
+            return created_comment
         except Exception as e:
             raise Exception(f"Error in add_comment_to_article: {str(e)}")
     

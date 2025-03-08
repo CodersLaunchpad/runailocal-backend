@@ -24,18 +24,21 @@ class CommentService:
             if not article:
                 raise ValueError("Article not found")
             
-            # Prepare comment data (without ID conversion - that's done in repo layer)
-            comment_data = {
-                "text": comment.text,
-                "article_id": comment.article_id,
-                "user_id": current_user.id,
-                "username": current_user.username,
-                "user_type": current_user.user_details.get("type", "normal"),
-                "created_at": datetime.now(timezone.utc)
-            }
-            
+            # Prepare comment data using a Pydantic model
+            comment_data = CommentCreate(
+            text=comment.text,
+            article_id=comment.article_id,
+            user_id=current_user.id,
+            username=current_user.username,
+            user_type=current_user.user_details.get("type", "normal"),
+            created_at=datetime.now(timezone.utc)
+            )
+        
+            # Convert the Pydantic model to a dictionary
+            comment_data_dict = comment_data.dict()  # Convert to dictionary
+        
             # Call repository to save comment
-            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id, comment_data)
+            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id,comment_data_dict)
             
             # Convert to API response model
             return comment_db_to_response(comment_db)
