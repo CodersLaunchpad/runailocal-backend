@@ -5,7 +5,7 @@ services:
         build:
             context: .
             dockerfile: Dockerfile
-        # network_mode: "host"
+        network_mode: "host"
         ports:
             - '8000:8000'
         # No ports needed with host network
@@ -25,7 +25,7 @@ services:
         #     options:
         #         max-size: 1g
         image: mongo:latest
-        # network_mode: "host"
+        network_mode: "host"
         ports:
             - '27017:27017'
         # No ports needed with host network
@@ -40,7 +40,7 @@ services:
         image: minio/minio
         container_name: minio
         restart: always
-        # network_mode: "host"
+        network_mode: "host"
         ports:
             - '9000:9000' # for storage client
             - '9001:9001' # for webui
