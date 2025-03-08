@@ -5,8 +5,8 @@ services:
         build:
             context: .
             dockerfile: Dockerfile
-        ports:
-            - "8000:8000"
+        network_mode: "host"  # Using host network
+        # ports section removed since it's not needed with host network
         volumes:
             - .:/app
         env_file:
@@ -15,42 +15,34 @@ services:
         depends_on:
             - mongo
             - minio
-        networks:
-            - rail-network
         
     mongo:
-        ports:
-            - '27019:27017'
         container_name: runailocal-db
         restart: always
         # logging:
         #     options:
         #         max-size: 1g
         image: mongo:latest
-        networks:
-            - rail-network
+        network_mode: "host"  # Using host network
+        # ports section removed since it's not needed with host network
         volumes:
             - mongo_data:/data/db
+        command: --port 27019  # Specify the port directly in the MongoDB command
 
     minio:
         image: minio/minio
         container_name: minio
         restart: always
-        ports:
-            - '9000:9000'  # MinIO API
-            - '9001:9001'  # MinIO Console (Web UI)
+        network_mode: "host"  # Using host network
+        # ports section removed since it's not needed with host network
         environment:
             MINIO_ROOT_USER: minioadmin
             MINIO_ROOT_PASSWORD: minioadmin
-        command: server /data --console-address ":9001"
+        command: server /data --console-address ":9001" --address ":9000"
         volumes:
             - minio_data:/data
-        networks:
-            - rail-network
 
-networks:
-    rail-network:
-        driver: bridge
+# Network section removed as it's not needed with host network
 
 volumes:
     minio_data:
