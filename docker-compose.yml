@@ -4,7 +4,7 @@ services:
         container_name: rail-be
         build:
             context: .
-            dockerfile: Dockerfile.backend
+            dockerfile: Dockerfile
         ports:
             - "8000:8000"
         volumes:
