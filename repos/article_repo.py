@@ -490,49 +490,78 @@ class ArticleRepository:
         
     async def get_article_likes_count(self, article_id: str) -> int:
         """
-        Get the number of likes for an article
+        Get the number of likes for an article by counting the liked_by array
         """
         try:
             # Convert article_id to ObjectId
-            article_object_id = ObjectId(article_id)
+            article_object_id = ensure_object_id(article_id)
             
             # Get the article
             article = await self.db.articles.find_one(
                 {"_id": article_object_id},
-                projection={"likes": 1}
+                projection={"liked_by": 1}
             )
             
             if not article:
                 return 0
                 
-            return article.get("likes", 0)
+            # Count the entries in the liked_by array
+            liked_by = article.get("liked_by", [])
+            return len(liked_by)
         except Exception as e:
             raise Exception(f"Error getting article likes count: {str(e)}")
         
-    async def get_article_likes_users(self, article_id: str) -> List[str]:
+    async def get_article_likes_users(self, article_id: str) -> List[Dict[str, str]]:
         """
-        Get the list of user IDs who liked an article
-        Returns a list of user IDs as strings
+        Get the list of users who liked an article with their details
+        Returns a list of user objects with selected fields
         """
         try:
             # Convert article_id to ObjectId
-            article_object_id = ObjectId(article_id)
+            article_object_id = ensure_object_id(article_id)
             
-            # Find all users who have this article in their likes
-            cursor = self.db.users.find(
-                {"likes": article_object_id},
-                projection={"_id": 1}
+            # Get the article to find users in the liked_by array
+            article = await self.db.articles.find_one(
+                {"_id": article_object_id},
+                projection={"liked_by": 1}
             )
             
-            # Extract user IDs
-            user_ids = []
+            if not article or "liked_by" not in article:
+                return []
+            
+            # Convert user IDs to ObjectId
+            user_ids = [ensure_object_id(str(user_id)) for user_id in article.get("liked_by", [])]
+            
+            if not user_ids:
+                return []
+            
+            # Find all users who liked this article with selected fields
+            cursor = self.db.users.find(
+                {"_id": {"$in": user_ids}},
+                projection={
+                    "_id": 1,
+                    "first_name": 1,
+                    "last_name": 1,
+                    "user_name": 1,
+                    "profile_photo_base64": 1
+                }
+            )
+            
+            # Format user data
+            users_list = []
             async for user in cursor:
-                user_ids.append(str(user["_id"]))
+                users_list.append({
+                    "user_id": str(user["_id"]),
+                    "first_name": user.get("first_name", ""),
+                    "last_name": user.get("last_name", ""),
+                    "user_name": user.get("user_name", ""),
+                    "profile_photo_base64": user.get("profile_photo_base64", "")
+                })
                 
-            return user_ids
+            return users_list
         except Exception as e:
             raise Exception(f"Error getting users who liked the article: {str(e)}")        
-            
+                
     async def upload_article_image(self, article_id: str, file_path: str, is_main: bool, is_thumbnail: bool, caption: Optional[str]) -> Dict[str, Any]:
         """
         Add an image to an article
