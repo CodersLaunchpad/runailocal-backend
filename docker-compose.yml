@@ -1,5 +1,24 @@
-version: '3.3'
+version: '3.8'
 services:
+
+    rail-be:
+        container_name: rail-be
+        build:
+            context: ./backend
+            dockerfile: Dockerfile.backend
+        ports:
+            - "8000:8000"
+        volumes:
+            - ./backend:/app
+        env_file:
+            - ./backend/.env
+        restart: unless-stopped
+        depends_on:
+            - mongo
+            - minio
+        networks:
+            - rail-network
+        
     mongo:
         ports:
             - '27019:27017'
@@ -9,6 +28,10 @@ services:
         #     options:
         #         max-size: 1g
         image: mongo:latest
+        networks:
+            - rail-network
+        volumes:
+            - mongo_data:/data/db
 
     minio:
         image: minio/minio
@@ -23,6 +46,13 @@ services:
         command: server /data --console-address ":9001"
         volumes:
             - minio_data:/data
+        networks:
+            - rail-network
+
+networks:
+    rail-network:
+        driver: bridge
 
 volumes:
     minio_data:
+    mongo_data:
