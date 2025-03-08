@@ -4,7 +4,9 @@ WORKDIR /app
 
 # Copy requirements first for better layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y pymongo bson && \
+    pip install --no-cache-dir pymongo
 
 # Copy .env file
 COPY .env .
