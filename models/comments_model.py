@@ -14,6 +14,8 @@ class CommentResponse(CommentBase):
     """Model for returning comment information to clients"""
     id: str
     user_id: str
+    user_first_name: str
+    user_last_name: str
     username: str
     user_type: str
     created_at: datetime
