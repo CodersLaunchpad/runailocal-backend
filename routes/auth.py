@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from datetime import timedelta
 
+from db.db import get_db
 from models.auth_model import Token
 from dependencies.auth import AuthServiceDep
 
@@ -42,7 +43,8 @@ async def check_availability(
     field: str, 
     value: str,
     case_sensitive: bool = False,
-    db = DB
+    # db = DB
+    db = Depends(get_db)
 ):
     """
     Check if a given value for a specified field is available in a collection.
@@ -69,5 +71,6 @@ async def check_availability(
         if document:
             return {"available": False, "message": f"{field} is already taken."}
         return {"available": True, "message": f"{field} is available."}
-    except Exception:
+    except Exception as e:
+        print(f"Error: {str(e)}")
         return {"available": False, "message": "Unable to check availability currently."}
