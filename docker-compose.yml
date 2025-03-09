@@ -66,4 +66,4 @@ volumes:
 
 networks:
   rail-network:
-    driver: bridge
+    external: true
