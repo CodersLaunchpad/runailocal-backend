@@ -28,6 +28,7 @@ class UserService:
     async def create_user(self, user: UserCreate) -> Dict[str, Any]:
         """Create a new user"""
         # Check for existing username/email
+        print("hit the creating user route")
         existing_user = await self.user_repo.find_by_username(user.username)
         if existing_user:
             raise ValueError("Username already registered")

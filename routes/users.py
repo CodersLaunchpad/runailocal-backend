@@ -11,7 +11,7 @@ from datetime import datetime
 from minio import Minio
 from pydantic import EmailStr
 from db.db import get_object_storage
-from dependencies.user import UserServiceDep
+from dependencies.user import UserServiceDep, get_user_service
 
 from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
@@ -19,6 +19,7 @@ from models.users_model import UserCreate, UserUpdate
 from mappers.users_mapper import UserResponse
 from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser
 from services import minio_service
+from services.user_service import UserService
 
 router = APIRouter()
 # User routes
@@ -34,8 +35,8 @@ async def create_user(
     date_of_birth: str = Form(...),
     profile_picture_initials: Optional[str] = Form(None),
     profile_picture: Optional[UploadFile] = File(None),
-    
-    user_service: UserServiceDep = Depends(),
+    user_service: UserService = Depends(get_user_service),
+    # user_service: UserServiceDep = Depends(),
     minio_client: Minio = Depends(get_object_storage)
 ):
     """Create a new user and return the user details"""
@@ -67,6 +68,7 @@ async def create_user(
         
         # Create user
         user = UserCreate(**user_data)
+        # created_user = await user_service.create_user(user)
         created_user = await user_service.create_user(user)
         
         return created_user
