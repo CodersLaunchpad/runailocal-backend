@@ -19,6 +19,11 @@ class UserCreate(UserBase):
     profile_picture: Optional[str] = None
     profile_picture_initials: Optional[str] = None
     date_of_birth: str
+    profile_picture_file: Optional[Any] = None  # This field won't be in JSON, but we'll use it to pass the file
+
+    class Config:
+        arbitrary_types_allowed = True  # Allow UploadFile to be stored temporarily
+
 
 class UserUpdate(BaseModel):
     """Model for updating an existing user"""
@@ -27,7 +32,6 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     user_details: Optional[Dict[str, Any]] = None
-
 class UserResponse(UserBase):
     """Model for returning user information to clients"""
     id: str

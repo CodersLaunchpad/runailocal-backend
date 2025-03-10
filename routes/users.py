@@ -3,29 +3,81 @@ import io
 import os
 import random
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Response, status, Depends
+from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
-from dependencies.user import UserServiceDep
+
+from minio import Minio
+from pydantic import EmailStr
+from db.db import get_object_storage
+from dependencies.user import UserServiceDep, get_user_service
 
 from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
 from models.users_model import UserCreate, UserUpdate
 from mappers.users_mapper import UserResponse
 from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser
+from services import minio_service
+from services.user_service import UserService
 
 router = APIRouter()
 # User routes
 @router.post("/register", response_model=UserResponse)
-async def create_user(user: UserCreate, user_service: UserServiceDep):
+async def create_user(
+    username: str = Form(...),
+    email: EmailStr = Form(...),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    password: str = Form(...),
+    user_type: Optional[str] = Form("normal"),
+    region: Optional[str] = Form(None),
+    date_of_birth: str = Form(...),
+    profile_picture_initials: Optional[str] = Form(None),
+    profile_picture: Optional[UploadFile] = File(None),
+    user_service: UserService = Depends(get_user_service),
+    # user_service: UserServiceDep = Depends(),
+    minio_client: Minio = Depends(get_object_storage)
+):
     """Create a new user and return the user details"""
     try:
+        # Create a UserCreate object
+        user_data = {
+            "username": username,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "password": password,
+            "user_type": user_type,
+            "region": region,
+            "date_of_birth": date_of_birth,
+            "profile_picture_initials": profile_picture_initials
+        }
+        
+        # Handle profile picture upload if provided
+        if profile_picture:
+            # Upload to MinIO and create file record
+            from services.minio_service import upload_profile_picture
+            file_record = await upload_profile_picture(
+                profile_picture=profile_picture,
+                username=username,
+                minio_client=minio_client
+            )
+            # Pass the file_id to the user creation
+            user_data["profile_photo_id"] = file_record["file_id"]
+        
+        # Create user
+        user = UserCreate(**user_data)
+        # created_user = await user_service.create_user(user)
         created_user = await user_service.create_user(user)
+        
         return created_user
-    except ValueError as e:
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+    
 @router.get("/me", status_code=status.HTTP_200_OK)
 async def read_users_me(
     current_user: CurrentActiveUser, user_service: UserServiceDep
