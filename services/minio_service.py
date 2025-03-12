@@ -39,7 +39,7 @@ async def upload_to_minio(
         file_extension = filename.split('.')[-1].lower()
         
         # Setup bucket info
-        bucket_name = "runailocal-storage"
+        bucket_name = settings.MINIO_BUCKET
         object_name = f"{folder}/{file_id}.{file_extension}"
         
         # Upload to MinIO
