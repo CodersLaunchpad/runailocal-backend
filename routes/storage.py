@@ -13,21 +13,23 @@ async def get_file(
     request: Request,
     file_id_or_slug: str, 
     identifier_type: str = Query("auto", description="Type of identifier: 'id', 'slug', or 'auto' for automatic detection"),
-    download: bool = Query(False, description="Set to true to download the file instead of viewing it")
+    download: bool = Query(False, description="Set to true to download the file instead of viewing it"),
+    db = Depends(get_db),
+    minio_client = Depends(get_object_storage)
 ):
-    collection = get_db()
-    minio_client = get_object_storage()
+    # db = await get_db()
+    # minio_client = await get_object_storage()
     
     # Determine if we're looking for a file_id or slug
     if identifier_type == "auto":
         # Try to find by file_id first, then by slug
-        file = await collection.find_one({"file_id": file_id_or_slug})
+        file = await db.files.find_one({"file_id": file_id_or_slug})
         if not file:
-            file = await collection.find_one({"slug": file_id_or_slug})
+            file = await db.files.find_one({"slug": file_id_or_slug})
     elif identifier_type == "id":
-        file = await collection.find_one({"file_id": file_id_or_slug})
+        file = await db.files.find_one({"file_id": file_id_or_slug})
     elif identifier_type == "slug":
-        file = await collection.find_one({"slug": file_id_or_slug})
+        file = await db.files.find_one({"slug": file_id_or_slug})
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -53,12 +55,12 @@ async def get_file(
             object_name = file["object_name"]
             bucket_name = settings.MINIO_BUCKET
             
-            # Create a BytesIO object to store the file data
-            file_data = io.BytesIO()
-            
             # Get the object from MinIO
-            minio_client.get_object(bucket_name, object_name, callback=file_data.write)
-            
+            response = minio_client.get_object(bucket_name, object_name)
+
+            # Read the data from the response
+            file_data = io.BytesIO(response.read())
+
             # Reset the pointer to the beginning of the BytesIO object
             file_data.seek(0)
             
