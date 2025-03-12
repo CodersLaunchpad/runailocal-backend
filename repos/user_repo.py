@@ -20,13 +20,31 @@ class UserRepository:
     async def find_by_username(self, username: str) -> Optional[UserInDB]:
         """
         Find a user by username with case-insensitive matching
-        Returns UserInDB model or None
+        Returns UserInDB model with profile info if available
         """
         user_dict = await self.db.users.find_one({"username": {"$regex": f"^{username}$", "$options": "i"}})
         
         if not user_dict:
             return None
             
+        # If user has a profile photo, fetch the file details
+        if user_dict.get("profile_photo_id"):
+            file_id = user_dict.get("profile_photo_id")
+            file_dict = await self.db.files.find_one({"file_id": file_id})
+            
+            if file_dict:
+                # Create file object with file details
+                file_obj = {
+                    "file_id": file_dict.get("file_id"),
+                    "file_type": file_dict.get("file_type"),
+                    "file_extension": file_dict.get("file_extension"),
+                    "size": file_dict.get("size"),
+                    "object_name": file_dict.get("object_name"),
+                    "slug": file_dict.get("slug"),
+                    "unique_string": file_dict.get("unique_string")
+                }
+                user_dict["profile_file"] = file_obj
+        
         # Convert ObjectId to string
         if isinstance(user_dict.get("_id"), ObjectId):
             user_dict["_id"] = str(user_dict["_id"])
@@ -37,13 +55,31 @@ class UserRepository:
     async def find_by_email(self, email: str) -> Optional[UserInDB]:
         """
         Find a user by email
-        Returns UserInDB model or None
+        Returns UserInDB model with profile info if available
         """
         user_dict = await self.db.users.find_one({"email": email})
         
         if not user_dict:
             return None
             
+        # If user has a profile photo, fetch the file details
+        if user_dict.get("profile_photo_id"):
+            file_id = user_dict.get("profile_photo_id")
+            file_dict = await self.db.files.find_one({"file_id": file_id})
+            
+            if file_dict:
+                # Create file object with file details
+                file_obj = {
+                    "file_id": file_dict.get("file_id"),
+                    "file_type": file_dict.get("file_type"),
+                    "file_extension": file_dict.get("file_extension"),
+                    "size": file_dict.get("size"),
+                    "object_name": file_dict.get("object_name"),
+                    "slug": file_dict.get("slug"),
+                    "unique_string": file_dict.get("unique_string")
+                }
+                user_dict["profile_file"] = file_obj
+        
         # Convert ObjectId to string
         if isinstance(user_dict.get("_id"), ObjectId):
             user_dict["_id"] = str(user_dict["_id"])

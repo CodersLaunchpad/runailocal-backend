@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from db.schemas.files_schema import FileInDB
 from utils.time import get_current_utc_time
 from bson import ObjectId
 from db.mongodb import PyObjectId
@@ -15,7 +16,10 @@ class UserInDB(BaseModel):
     password_hash: str
     user_type: str
     user_details: Dict[str, Any] = {}
-    profile_picture_base64:  Optional[str] = None 
+    profile_picture_base64:  Optional[str] = None
+    profile_photo_id: Optional[str] = None
+    profile_photo_file: Optional[str] = None
+    profile_file: Optional[FileInDB] = None
 
     # Relationships with other users
     likes: List[PyObjectId] = []
