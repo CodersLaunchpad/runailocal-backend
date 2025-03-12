@@ -20,9 +20,11 @@ class UserCreate(UserBase):
     profile_picture_initials: Optional[str] = None
     date_of_birth: str
     profile_picture_file: Optional[Any] = None  # This field won't be in JSON, but we'll use it to pass the file
+    profile_photo_id: Optional[str] = None  # Field to store the MinIO file ID
 
     class Config:
         arbitrary_types_allowed = True  # Allow UploadFile to be stored temporarily
+
 
 
 class UserUpdate(BaseModel):
