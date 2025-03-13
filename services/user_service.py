@@ -28,7 +28,6 @@ class UserService:
     async def create_user(self, user: UserCreate) -> Dict[str, Any]:
         """Create a new user"""
         # Check for existing username/email
-        print("hit the creating user route")
         existing_user = await self.user_repo.find_by_username(user.username)
         if existing_user:
             raise ValueError("Username already registered")
@@ -37,58 +36,36 @@ class UserService:
         if existing_email:
             raise ValueError("Email already registered")
         
-        # Initialize variables
-        profile_picture_base64 = None
+        # Initialize profile photo variables
         profile_photo_id = getattr(user, 'profile_photo_id', None)
         
-        # Handle base64 profile picture (backward compatibility)
-        if not profile_photo_id and hasattr(user, 'profile_picture') and user.profile_picture:
-            try:
-                # Get MinIO client
-                from db.db import get_object_storage
-                from services.minio_service import upload_base64_profile_picture
-                minio_client = await get_object_storage()
-                
-                # Upload to MinIO
-                file_record = await upload_base64_profile_picture(
-                    base64_data=user.profile_picture,
-                    username=user.username,
-                    minio_client=minio_client
-                )
-                profile_photo_id = file_record["file_id"]
-            except Exception as e:
-                # Fall back to generating avatar
-                print(f"Error handling base64 image: {str(e)}")
-                initials = user.username[:2].upper()
-                profile_picture_base64 = self._generate_initials_avatar_base64(initials)
-        
-        # Generate avatar if no profile picture
-        if not profile_photo_id and not profile_picture_base64:
+        # If no profile photo was uploaded, generate an avatar
+        if not profile_photo_id:
+            # Get MinIO client
+            from db.db import get_object_storage
+            from services.minio_service import upload_base64_profile_picture
+            minio_client = await get_object_storage()
+            
+            # Generate initials avatar
             initials = user.profile_picture_initials or user.username[:2].upper()
-            profile_picture_base64 = self._generate_initials_avatar_base64(initials)
+            avatar_base64 = self._generate_initials_avatar_base64(initials)
+            
+            # Upload generated avatar to MinIO
+            file_record = await upload_base64_profile_picture(
+                base64_data=avatar_base64,
+                username=user.username,
+                minio_client=minio_client
+            )
+            profile_photo_id = file_record["file_id"]
         
-        # Create user dictionary
+        # Create user dictionary with basic fields
         hashed_password = get_password_hash(user.password)
         user_dict = user.model_dump(exclude={"password", "profile_picture", "profile_picture_initials"})
         user_dict["password_hash"] = hashed_password
         user_dict["created_at"] = datetime.now(timezone.utc)
         
-        # Add profile picture info
-        if profile_photo_id:
-            user_dict["profile_photo_id"] = profile_photo_id
-        if profile_picture_base64:
-            user_dict["profile_picture_base64"] = profile_picture_base64
-        # Create user object
-        hashed_password = get_password_hash(user.password)
-        user_dict = user.model_dump(exclude={"password", "profile_picture", "profile_picture_initials"})
-        user_dict["password_hash"] = hashed_password
-        user_dict["created_at"] = datetime.now(timezone.utc)
-        
-        # Add profile picture information
-        if profile_photo_id:
-            user_dict["profile_photo_id"] = profile_photo_id
-        if profile_picture_base64:
-            user_dict["profile_picture_base64"] = profile_picture_base64
+        # Store the profile photo ID in a consistent field
+        user_dict["profile_picture_file"] = profile_photo_id
         
         # Set user details based on type
         if user.user_type == "normal":
@@ -103,7 +80,6 @@ class UserService:
                 "type": "author",
                 "bio": "",
                 "slug": user.username.lower().replace(" ", "-"),
-                "profile_picture": profile_picture_base64,
                 "articles_count": 0
             }
         elif user.user_type == "admin":
@@ -114,6 +90,7 @@ class UserService:
                 "email_notifications": True
             }
         
+        # Initialize empty collections
         user_dict["likes"] = []
         user_dict["following"] = []
         user_dict["followers"] = []
@@ -122,12 +99,15 @@ class UserService:
         # Insert into database
         created_user = await self.user_repo.create_user(user_dict)
         
-        # Add profile picture URL to response if available
+        # Add profile picture URL to response by fetching file details
         if profile_photo_id:
             from services.minio_service import get_file_by_id
             file_record = await get_file_by_id(profile_photo_id)
-            if file_record and "file_url" in file_record:
-                created_user["profile_picture_url"] = file_record["file_url"]
+            if file_record:
+                # Add file details to the response
+                created_user["profile_picture_url"] = file_record.get("file_url")
+                created_user["profile_picture_type"] = file_record.get("file_type")
+                created_user["profile_picture_size"] = file_record.get("size")
         
         return created_user
     

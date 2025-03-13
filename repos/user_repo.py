@@ -20,13 +20,31 @@ class UserRepository:
     async def find_by_username(self, username: str) -> Optional[UserInDB]:
         """
         Find a user by username with case-insensitive matching
-        Returns UserInDB model or None
+        Returns UserInDB model with profile info if available
         """
         user_dict = await self.db.users.find_one({"username": {"$regex": f"^{username}$", "$options": "i"}})
         
         if not user_dict:
             return None
             
+        # If user has a profile photo, fetch the file details
+        if user_dict.get("profile_photo_id"):
+            file_id = user_dict.get("profile_photo_id")
+            file_dict = await self.db.files.find_one({"file_id": file_id})
+            
+            if file_dict:
+                # Create file object with file details
+                file_obj = {
+                    "file_id": file_dict.get("file_id"),
+                    "file_type": file_dict.get("file_type"),
+                    "file_extension": file_dict.get("file_extension"),
+                    "size": file_dict.get("size"),
+                    "object_name": file_dict.get("object_name"),
+                    "slug": file_dict.get("slug"),
+                    "unique_string": file_dict.get("unique_string")
+                }
+                user_dict["profile_file"] = file_obj
+        
         # Convert ObjectId to string
         if isinstance(user_dict.get("_id"), ObjectId):
             user_dict["_id"] = str(user_dict["_id"])
@@ -37,13 +55,31 @@ class UserRepository:
     async def find_by_email(self, email: str) -> Optional[UserInDB]:
         """
         Find a user by email
-        Returns UserInDB model or None
+        Returns UserInDB model with profile info if available
         """
         user_dict = await self.db.users.find_one({"email": email})
         
         if not user_dict:
             return None
             
+        # If user has a profile photo, fetch the file details
+        if user_dict.get("profile_photo_id"):
+            file_id = user_dict.get("profile_photo_id")
+            file_dict = await self.db.files.find_one({"file_id": file_id})
+            
+            if file_dict:
+                # Create file object with file details
+                file_obj = {
+                    "file_id": file_dict.get("file_id"),
+                    "file_type": file_dict.get("file_type"),
+                    "file_extension": file_dict.get("file_extension"),
+                    "size": file_dict.get("size"),
+                    "object_name": file_dict.get("object_name"),
+                    "slug": file_dict.get("slug"),
+                    "unique_string": file_dict.get("unique_string")
+                }
+                user_dict["profile_file"] = file_obj
+        
         # Convert ObjectId to string
         if isinstance(user_dict.get("_id"), ObjectId):
             user_dict["_id"] = str(user_dict["_id"])
@@ -85,6 +121,25 @@ class UserRepository:
             user = await self.db.users.find_one({"_id": user_object_id})
             if not user:
                 raise ValueError("User not found")
+            
+            # If user has a profile photo, fetch the file details
+            if user.get("profile_photo_id"):
+                file_id = user.get("profile_photo_id")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    user["profile_file"] = file_obj
+                    user["profile_picture_base64"] = "DEPRECIATED"
             
             # Get follower and following IDs
             follower_ids = user.get("followers", [])
@@ -332,6 +387,25 @@ class UserRepository:
             # Convert ObjectId to string
             if isinstance(user_dict.get("_id"), ObjectId):
                 user_dict["_id"] = str(user_dict["_id"])
+
+            # If article has a main file image, fetch the file details
+            if user_dict("profile_photo_base64"):
+                file_id = user_dict.get("profile_photo_base64")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    user_dict["profile_file"] = file_obj
+                    user_dict["profile_photo_base64"] = "DEPRECIATED"
                 
             # Clean document and convert to UserInDB model
             cleaned_user = clean_document(prepare_mongo_document(user_dict))
@@ -546,6 +620,25 @@ class UserRepository:
                 if isinstance(author_dict.get("_id"), ObjectId):
                     author_dict["_id"] = str(author_dict["_id"])
                 
+                # If article has a main file image, fetch the file details
+                if author_dict("profile_photo_base64"):
+                    file_id = author_dict("profile_photo_base64")
+                    file_dict = await self.db.files.find_one({"file_id": file_id})
+                    
+                    if file_dict:
+                        # Create file object with file details
+                        file_obj = {
+                            "file_id": file_dict.get("file_id"),
+                            "file_type": file_dict.get("file_type"),
+                            "file_extension": file_dict.get("file_extension"),
+                            "size": file_dict.get("size"),
+                            "object_name": file_dict.get("object_name"),
+                            "slug": file_dict.get("slug"),
+                            "unique_string": file_dict.get("unique_string")
+                        }
+                        author_dict["profile_file"] = file_obj
+                        author_dict["profile_photo_base64"] = "DEPRECIATED"
+
                 # Convert to UserInDB model
                 author = UserInDB(**author_dict)
                 following_users.append(author)
@@ -572,6 +665,25 @@ class UserRepository:
             
             # User's ObjectId
             user_object_id = user["_id"]
+
+            # If article has a main file image, fetch the file details
+            if user.get("profile_photo_base64"):
+                file_id = user.get("profile_photo_base64")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    user["profile_file"] = file_obj
+                    user["profile_photo_base64"] = "DEPRECIATED"
             
             # Get follower and following IDs
             follower_ids = user.get("followers", [])
@@ -600,6 +712,25 @@ class UserRepository:
                             ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id 
                             for f_id in follower.get("followers", [])
                         ]
+
+                    # If user has a profile photo, fetch the file details
+                    if follower.get("profile_photo_id"):
+                        file_id = follower.get("profile_photo_id")
+                        file_dict = await self.db.files.find_one({"file_id": file_id})
+                        
+                        if file_dict:
+                            # Create file object with file details
+                            file_obj = {
+                                "file_id": file_dict.get("file_id"),
+                                "file_type": file_dict.get("file_type"),
+                                "file_extension": file_dict.get("file_extension"),
+                                "size": file_dict.get("size"),
+                                "object_name": file_dict.get("object_name"),
+                                "slug": file_dict.get("slug"),
+                                "unique_string": file_dict.get("unique_string")
+                            }
+                            follower["profile_file"] = file_obj
+                            follower["profile_picture_base64"] = "DEPRECIATED"
                     
                     followers_list.append({
                         "id": str(follower["_id"]),
@@ -625,6 +756,26 @@ class UserRepository:
                             ObjectId(str(f_id)) if not isinstance(f_id, ObjectId) else f_id 
                             for f_id in following_user.get("followers", [])
                         ]
+
+                    #get the profile photo infos
+                    # If user has a profile photo, fetch the file details
+                    if following_user.get("profile_photo_id"):
+                        file_id = following_user.get("profile_photo_id")
+                        file_dict = await self.db.files.find_one({"file_id": file_id})
+                        
+                        if file_dict:
+                            # Create file object with file details
+                            file_obj = {
+                                "file_id": file_dict.get("file_id"),
+                                "file_type": file_dict.get("file_type"),
+                                "file_extension": file_dict.get("file_extension"),
+                                "size": file_dict.get("size"),
+                                "object_name": file_dict.get("object_name"),
+                                "slug": file_dict.get("slug"),
+                                "unique_string": file_dict.get("unique_string")
+                            }
+                            following_user["profile_file"] = file_obj
+                            following_user["profile_picture_base64"] = "DEPRECIATED"
                     
                     following_list.append({
                         "id": str(following_user["_id"]),
@@ -683,6 +834,25 @@ class UserRepository:
                 current_user_object_id = ObjectId(str(current_user.id))
                 is_following = current_user_object_id in [ObjectId(str(f_id)) for f_id in follower_ids]
             
+            # If user has a profile photo, fetch the file details
+            if user.get("profile_photo_id"):
+                file_id = user.get("profile_photo_id")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    user["profile_file"] = file_obj
+                    user["profile_picture_base64"] = "DEPRECIATED"
+            
             # Build response
             user_stats = {
                 "username": user.get("username", ""),
@@ -700,6 +870,8 @@ class UserRepository:
                 "is_following": is_following,
                 "joined_date": user.get("created_at", ""),
                 "profile_picture_base64": user.get("profile_picture_base64", ""),
+                "profile_file": user.get("profile_file", ""),
+                # "profile_picture_base64": "DEPRECIATED",
             }
             
             return clean_document(user_stats)

@@ -1,73 +1,116 @@
 # app/services/minio_service.py
+from typing import Any, Dict, Optional
 from fastapi import UploadFile, HTTPException, status
 from minio import Minio
 import io
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import base64
+import re
 from db.db import get_db
-from config import settings  # Import your settings
+from config import settings
 
 # Global minio client - will be initialized by get_object_storage
 minio_client = None
 
-async def upload_profile_picture(profile_picture: UploadFile, username: str, minio_client: Minio) -> dict:
+async def upload_to_minio(
+    data: bytes, 
+    filename: str, 
+    content_type: str, 
+    minio_client: Minio,
+    folder: str = "profile_photos"
+) -> Dict[str, Any]:
     """
-    Upload a profile picture to MinIO and save record to MongoDB
-    Returns the file record with ID and URL
+    Common function to upload any data to MinIO
+    
+    Args:
+        data: The file content as bytes
+        filename: Original filename or generated name
+        content_type: MIME type of the file
+        minio_client: MinIO client instance
+        folder: The folder path in the bucket
+    
+    Returns:
+        Dict with file metadata and MinIO information
     """
     try:
-        # Read file content
-        content = await profile_picture.read()
-        
-        # Generate a unique file ID
+        # Generate file ID and get extension
         file_id = str(uuid.uuid4())
+        file_extension = filename.split('.')[-1].lower()
         
-        # Get file extension
-        filename = profile_picture.filename
-        file_extension = filename.split('.')[-1] if '.' in filename and '.' in filename.split('/')[-1] else "jpg"
-        
-        # Create object name (path in MinIO)
-        object_name = f"profile_photos/{file_id}.{file_extension}"
+        # Setup bucket info
+        bucket_name = settings.MINIO_BUCKET
+        object_name = f"{folder}/{file_id}.{file_extension}"
         
         # Upload to MinIO
+        file_size = len(data)
         minio_client.put_object(
-            bucket_name=settings.MINIO_BUCKET,
+            bucket_name=bucket_name,
             object_name=object_name,
-            data=io.BytesIO(content),
-            length=len(content),
-            content_type=profile_picture.content_type or f"image/{file_extension}"
+            data=io.BytesIO(data),
+            length=file_size,
+            content_type=content_type
         )
         
-        # Generate URL
-        file_url = minio_client.presigned_get_object(
-            bucket_name=settings.MINIO_BUCKET,
-            object_name=object_name,
-            expires=timedelta(hours=1)
-        )
-        
-        # Create file record
-        file_record = {
+        # Generate a unique string for the slug
+        unique_string = file_id[:8]  # Using first 8 chars of UUID for uniqueness
+            
+        # Return file information
+        return {
             "file_id": file_id,
-            "filename": f"{username}-profile.{file_extension}",
-            "file_type": profile_picture.content_type or f"image/{file_extension}",
+            "filename": filename,
+            "file_type": content_type,
             "file_extension": file_extension,
-            "file_url": file_url,
-            "slug": f"profile-{username}",
-            "size": len(content),
+            "size": file_size,
             "object_name": object_name,
-            "uploaded_at": datetime.utcnow()
+            "unique_string": unique_string,
         }
         
-        # Save to MongoDB
-        db = await get_db()
-        await db["files"].insert_one(file_record)
-        
-        # Reset file pointer
-        await profile_picture.seek(0)
-        
-        return file_record
+    except Exception as e:
+        print(f"Error uploading to MinIO: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Failed to upload file: {str(e)}"
+        )
+
+
+async def upload_profile_picture(profile_picture: UploadFile, username: str, minio_client: Minio) -> Dict[str, Any]:
+    """
+    Upload a profile picture to MinIO and create a file record
     
+    Returns the created file record including file_id, slug, etc.
+    """
+    try:
+        # Validate image type
+        content_type = profile_picture.content_type
+        if not content_type or not content_type.startswith('image/'):
+            raise ValueError("Uploaded file must be an image")
+        
+        # Read file content
+        file_content = await profile_picture.read()
+        
+        # Use common upload function
+        file_info = await upload_to_minio(
+            data=file_content,
+            filename=profile_picture.filename,
+            content_type=content_type,
+            minio_client=minio_client
+        )
+        
+        # Create a unique slug using username and the unique string
+        file_info["slug"] = f"profile-{username.lower()}-{file_info['unique_string']}"
+        file_info["uploaded_at"] = datetime.now(timezone.utc)
+        
+        # Save to database
+        db = await get_db()
+        file_collection = db.files
+        await file_collection.insert_one(file_info)
+        
+        return file_info
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         print(f"Error uploading profile picture: {str(e)}")
         raise HTTPException(
@@ -75,66 +118,53 @@ async def upload_profile_picture(profile_picture: UploadFile, username: str, min
             detail=f"Failed to upload profile picture: {str(e)}"
         )
 
-async def upload_base64_profile_picture(base64_data: str, username: str, minio_client: Minio) -> dict:
+
+async def upload_base64_profile_picture(base64_data: str, username: str, minio_client: Minio) -> Dict[str, Any]:
     """
-    Upload a base64 encoded profile picture
-    Returns the file record with ID and URL
+    Upload a base64 encoded profile picture to MinIO and create a file record
+    
+    Returns the created file record including file_id, slug, etc.
     """
     try:
-        # Clean up base64 data
-        if "base64," in base64_data:
-            content_type = base64_data.split(';')[0].split(':')[1] if ';base64,' in base64_data else "image/jpeg"
-            base64_data = base64_data.split("base64,")[1]
-        else:
-            content_type = "image/jpeg"
+        # Parse the base64 data
+        match = re.match(r'data:image/(\w+);base64,(.*)', base64_data)
+        if not match:
+            raise ValueError("Invalid base64 image format")
         
-        # Decode base64
-        image_data = base64.b64decode(base64_data)
+        file_extension, base64_str = match.groups()
         
-        # Generate a unique file ID
-        file_id = str(uuid.uuid4())
+        # Convert to bytes
+        try:
+            file_content = base64.b64decode(base64_str)
+        except Exception:
+            raise ValueError("Invalid base64 encoding")
         
-        # Get file extension from content type
-        file_extension = content_type.split('/')[-1] if '/' in content_type else "jpg"
+        # Generate filename
+        filename = f"avatar-{username}.{file_extension}"
+        content_type = f"image/{file_extension}"
         
-        # Create object name
-        object_name = f"profile_photos/{file_id}.{file_extension}"
-        
-        # Upload to MinIO
-        minio_client.put_object(
-            bucket_name=settings.MINIO_BUCKET,
-            object_name=object_name,
-            data=io.BytesIO(image_data),
-            length=len(image_data),
-            content_type=content_type
+        # Use common upload function
+        file_info = await upload_to_minio(
+            data=file_content,
+            filename=filename,
+            content_type=content_type,
+            minio_client=minio_client
         )
         
-        # Generate URL
-        file_url = minio_client.presigned_get_object(
-            bucket_name=settings.MINIO_BUCKET,
-            object_name=object_name,
-            expires=timedelta(hours=1)
-        )
+        # Create a unique slug using username and the unique string
+        file_info["slug"] = f"profile-{username.lower()}-{file_info['unique_string']}"
+        file_info["uploaded_at"] = datetime.now(timezone.utc)
         
-        # Create file record
-        file_record = {
-            "file_id": file_id,
-            "filename": f"{username}-profile.{file_extension}",
-            "file_type": content_type,
-            "file_extension": file_extension,
-            "file_url": file_url,
-            "slug": f"profile-{username}",
-            "size": len(image_data),
-            "object_name": object_name,
-            "uploaded_at": datetime.utcnow()
-        }
-        
-        # Save to MongoDB
+        # Save to database
         db = await get_db()
-        await db["files"].insert_one(file_record)
+        file_collection = db.files
+        await file_collection.insert_one(file_info)
         
-        return file_record
+        return file_info
     
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         print(f"Error uploading base64 profile picture: {str(e)}")
         raise HTTPException(
@@ -142,7 +172,16 @@ async def upload_base64_profile_picture(base64_data: str, username: str, minio_c
             detail=f"Failed to upload profile picture: {str(e)}"
         )
 
-async def get_file_by_id(file_id: str):
-    """Get a file record by ID"""
-    db = await get_db()
-    return await db["files"].find_one({"file_id": file_id})
+
+async def get_file_by_id(file_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve a file record by its file_id
+    """
+    try:
+        db = await get_db()
+        file_collection = db.files
+        file_record = await file_collection.find_one({"file_id": file_id})
+        return file_record
+    except Exception as e:
+        print(f"Error retrieving file: {str(e)}")
+        return None

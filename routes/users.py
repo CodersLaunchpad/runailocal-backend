@@ -36,12 +36,11 @@ async def create_user(
     profile_picture_initials: Optional[str] = Form(None),
     profile_picture: Optional[UploadFile] = File(None),
     user_service: UserService = Depends(get_user_service),
-    # user_service: UserServiceDep = Depends(),
     minio_client: Minio = Depends(get_object_storage)
 ):
     """Create a new user and return the user details"""
     try:
-        # Create a UserCreate object
+        # Create a base user data dictionary
         user_data = {
             "username": username,
             "email": email,
@@ -55,7 +54,7 @@ async def create_user(
         }
         
         # Handle profile picture upload if provided
-        if profile_picture:
+        if profile_picture and profile_picture.filename:
             # Upload to MinIO and create file record
             from services.minio_service import upload_profile_picture
             file_record = await upload_profile_picture(
@@ -68,8 +67,9 @@ async def create_user(
         
         # Create user
         user = UserCreate(**user_data)
-        # created_user = await user_service.create_user(user)
         created_user = await user_service.create_user(user)
+
+        print("Created User with info: ", created_user)
         
         return created_user
     except HTTPException as e:
