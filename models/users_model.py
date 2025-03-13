@@ -91,11 +91,31 @@ async def get_author_data(db, author_id: ObjectId) -> Dict:
             "first_name": 1,
             "last_name": 1,
             "profile_picture_base64": 1,
+            "profile_photo_id": 1,
             "followers": 1,
             "following": 1,
             "bookmarks": 1,  # Include bookmarks field in the projection
         }
     )
+
+    # If user has a profile photo, fetch the file details
+    if author_data.get("profile_photo_id"):
+        file_id = author_data.get("profile_photo_id")
+        file_dict = await db.files.find_one({"file_id": file_id})
+        
+        if file_dict:
+            # Create file object with file details
+            file_obj = {
+                "file_id": file_dict.get("file_id"),
+                "file_type": file_dict.get("file_type"),
+                "file_extension": file_dict.get("file_extension"),
+                "size": file_dict.get("size"),
+                "object_name": file_dict.get("object_name"),
+                "slug": file_dict.get("slug"),
+                "unique_string": file_dict.get("unique_string")
+            }
+            author_data["profile_file"] = file_obj
+            author_data["profile_picture_base64"] = "DEPRECIATED"
     
     # Add follower_count to author data
     if author_data and "followers" in author_data:
