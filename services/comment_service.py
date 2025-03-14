@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timezone
 from models.comments_model import CommentCreate, CommentResponse
 from db.schemas.users_schema import UserInDB
+from models.models import ensure_object_id
 from repos.comment_repo import CommentRepository
 from repos.article_repo import ArticleRepository
 from mappers.comments_mapper import comment_db_to_response
@@ -40,6 +41,13 @@ class CommentService:
             # Call repository to save comment
             comment_db = await self.comment_repo.add_comment_to_article(comment.article_id,comment_data_dict)
             
+            comment_db['id'] = (comment_db['_id'])
+            comment_db['user_id'] = current_user.id
+            comment_db['username'] = current_user.username
+            comment_db['user_first_name'] = current_user.first_name
+            comment_db['user_last_name'] = current_user.last_name
+            comment_db['user_type'] = current_user.user_details.get("type", "normal")
+            comment_db['created_at'] = datetime.now(timezone.utc)
             # Convert to API response model
             return comment_db_to_response(comment_db)
         except Exception as e:

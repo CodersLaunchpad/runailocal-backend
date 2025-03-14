@@ -2,11 +2,12 @@ from models.comments_model import CommentResponse
 from db.schemas.comments_schema import CommentInDB
 from typing import Dict, Any
 from db.mongodb import convert_to_object_id
+from models.models import prepare_mongo_document, clean_document
+
 
 def comment_db_to_response(comment_db: CommentInDB) -> CommentResponse:
     """Convert database comment schema to API response model"""
-    comment_dict = comment_db.model_dump(by_alias=False)
-    
+    comment_dict = clean_document(prepare_mongo_document(comment_db))
     # Only include fields that are in the CommentResponse model
     response_fields = CommentResponse.model_fields.keys()
     filtered_comment = {k: v for k, v in comment_dict.items() if k in response_fields}
@@ -20,7 +21,6 @@ def comment_db_to_response(comment_db: CommentInDB) -> CommentResponse:
         filtered_comment["article_id"] = str(filtered_comment["article_id"])
     if "parent_comment_id" in filtered_comment:
         filtered_comment["parent_comment_id"] = str(filtered_comment["parent_comment_id"])
-    
     return CommentResponse(**filtered_comment)
 
 def prepare_comment_data(comment_dict: Dict[str, Any]) -> Dict[str, Any]:
