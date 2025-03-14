@@ -287,11 +287,32 @@ class UserRepository:
                 bookmarks_data = await bookmarks_cursor.to_list(length=None)
                 
                 for bookmark in bookmarks_data:
+                    # If article has a main file image, fetch the file details
+                    if bookmark.get("image_id"):
+                        file_id = bookmark.get("image_id")
+                        file_dict = await self.db.files.find_one({"file_id": file_id})
+                        
+                        if file_dict:
+                            # Create file object with file details
+                            file_obj = {
+                                "file_id": file_dict.get("file_id"),
+                                "file_type": file_dict.get("file_type"),
+                                "file_extension": file_dict.get("file_extension"),
+                                "size": file_dict.get("size"),
+                                "object_name": file_dict.get("object_name"),
+                                "slug": file_dict.get("slug"),
+                                "unique_string": file_dict.get("unique_string")
+                            }
+                            bookmark["main_image_file"] = file_obj
+                            bookmark["image"] = "DEPRECIATED"
+
                     bookmarks_list.append({
                         "id": str(bookmark.get("_id")),
                         "title": bookmark.get("title", ""),
                         "slug": bookmark.get("slug", ""),
                         "author": bookmark.get("author_name", ""),
+                        "image": bookmark.get("image", ""),
+                        "main_image_file": bookmark.get("main_image_file", ""),
                         "created_at": bookmark.get("created_at", "")
                     })
             
@@ -798,6 +819,7 @@ class UserRepository:
                         "first_name": follower.get("first_name", ""),
                         "last_name": follower.get("last_name", ""),
                         "profile_picture_base64": follower.get("profile_picture_base64", ""),
+                        "profile_file": follower.get("profile_file", ""),
                         "is_following": is_following_follower
                     })
             
@@ -843,6 +865,7 @@ class UserRepository:
                         "first_name": following_user.get("first_name", ""),
                         "last_name": following_user.get("last_name", ""),
                         "profile_picture_base64": following_user.get("profile_picture_base64", ""),
+                        "profile_file": following_user.get("profile_file", ""),
                         "is_following": is_following_user
                     })
             
@@ -1083,6 +1106,25 @@ class UserRepository:
                     if article:
                         # Convert the article to a JSON serializable format
                         article = clean_document(article)
+
+                        # If article has a main file image, fetch the file details
+                        if article.get("image_id"):
+                            file_id = article.get("image_id")
+                            file_dict = await self.db.files.find_one({"file_id": file_id})
+                            
+                            if file_dict:
+                                # Create file object with file details
+                                file_obj = {
+                                    "file_id": file_dict.get("file_id"),
+                                    "file_type": file_dict.get("file_type"),
+                                    "file_extension": file_dict.get("file_extension"),
+                                    "size": file_dict.get("size"),
+                                    "object_name": file_dict.get("object_name"),
+                                    "slug": file_dict.get("slug"),
+                                    "unique_string": file_dict.get("unique_string")
+                                }
+                                article["main_image_file"] = file_obj
+                                article["image"] = "DEPRECIATED"
                         
                         # Get the related category
                         category_data = None
@@ -1106,18 +1148,38 @@ class UserRepository:
                                     "first_name": 1,
                                     "last_name": 1,
                                     "profile_picture_base64": 1,
+                                    "profile_photo_id": 1,
                                     "followers": 1
                                 }
                             )
                             
                             if author:
+                                # If user has a profile photo, fetch the file details
+                                if author.get("profile_photo_id"):
+                                    file_id = author.get("profile_photo_id")
+                                    file_dict = await self.db.files.find_one({"file_id": file_id})
+                                    
+                                    if file_dict:
+                                        # Create file object with file details
+                                        file_obj = {
+                                            "file_id": file_dict.get("file_id"),
+                                            "file_type": file_dict.get("file_type"),
+                                            "file_extension": file_dict.get("file_extension"),
+                                            "size": file_dict.get("size"),
+                                            "object_name": file_dict.get("object_name"),
+                                            "slug": file_dict.get("slug"),
+                                            "unique_string": file_dict.get("unique_string")
+                                        }
+                                        author["profile_file"] = file_obj
+                                        author["profile_picture_base64"] = "DEPRECIATED"
                                 # Manually convert the author data
                                 author_data = {
                                     "_id": str(author["_id"]),
                                     "username": author.get("username", ""),
                                     "first_name": author.get("first_name", ""),
                                     "last_name": author.get("last_name", ""),
-                                    "profile_picture_base64": author.get("profile_picture_base64", "")
+                                    "profile_picture_base64": author.get("profile_picture_base64", ""),
+                                    "profile_file": author.get("profile_file", "")
                                 }
                                 
                                 # Calculate follower count
