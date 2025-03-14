@@ -87,6 +87,26 @@ class ArticleRepository:
             
             if not article:
                 return None
+            
+            # If article has a main file image, fetch the file details
+            if article.get("image_id"):
+                file_id = article.get("image_id")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    article["main_image_file"] = file_obj
+                    article["image"] = "DEPRECIATED"
+
                 
             # Clean the document before returning
             return clean_document(article)
@@ -105,6 +125,26 @@ class ArticleRepository:
             if not article:
                 return None
                 
+            # If article has a main file image, fetch the file details
+            if article.get("image_id"):
+                file_id = article.get("image_id")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    article["main_image_file"] = file_obj
+                    article["image"] = "DEPRECIATED"
+
+
             # Clean the document before returning
             return clean_document(article)
         except Exception as e:
@@ -137,6 +177,25 @@ class ArticleRepository:
             # Add is_bookmarked field if current_user is valid
             article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
             article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
+
+            # If article has a main file image, fetch the file details
+            if article.get("image_id"):
+                file_id = article.get("image_id")
+                file_dict = await self.db.files.find_one({"file_id": file_id})
+                
+                if file_dict:
+                    # Create file object with file details
+                    file_obj = {
+                        "file_id": file_dict.get("file_id"),
+                        "file_type": file_dict.get("file_type"),
+                        "file_extension": file_dict.get("file_extension"),
+                        "size": file_dict.get("size"),
+                        "object_name": file_dict.get("object_name"),
+                        "slug": file_dict.get("slug"),
+                        "unique_string": file_dict.get("unique_string")
+                    }
+                    article["main_image_file"] = file_obj
+                    article["image"] = "DEPRECIATED"
                 
             enriched_article = await enrich_article_data(self.db, article)
             
@@ -233,6 +292,26 @@ class ArticleRepository:
                 # Add is_bookmarked field if current_user is valid
                 article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                 article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
+
+                # If article has a main file image, fetch the file details
+                if article.get("image_id"):
+                    file_id = article.get("image_id")
+                    file_dict = await self.db.files.find_one({"file_id": file_id})
+                    
+                    if file_dict:
+                        # Create file object with file details
+                        file_obj = {
+                            "file_id": file_dict.get("file_id"),
+                            "file_type": file_dict.get("file_type"),
+                            "file_extension": file_dict.get("file_extension"),
+                            "size": file_dict.get("size"),
+                            "object_name": file_dict.get("object_name"),
+                            "slug": file_dict.get("slug"),
+                            "unique_string": file_dict.get("unique_string")
+                        }
+                        article["main_image_file"] = file_obj
+                        article["image"] = "DEPRECIATED"
+
                 
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -286,6 +365,26 @@ class ArticleRepository:
                 # Add is_bookmarked field if current_user is valid
                 article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                 article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
+
+                # If article has a main file image, fetch the file details
+                if article.get("image_id"):
+                    file_id = article.get("image_id")
+                    file_dict = await self.db.files.find_one({"file_id": file_id})
+                    
+                    if file_dict:
+                        # Create file object with file details
+                        file_obj = {
+                            "file_id": file_dict.get("file_id"),
+                            "file_type": file_dict.get("file_type"),
+                            "file_extension": file_dict.get("file_extension"),
+                            "size": file_dict.get("size"),
+                            "object_name": file_dict.get("object_name"),
+                            "slug": file_dict.get("slug"),
+                            "unique_string": file_dict.get("unique_string")
+                        }
+                        article["main_image_file"] = file_obj
+                        article["image"] = "DEPRECIATED"
+
                     
                 # Enrich article with related data
                 enriched_article = await enrich_article_data(self.db, article)
@@ -315,6 +414,26 @@ class ArticleRepository:
                     # Add is_bookmarked field if current_user is valid
                     article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
                     article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
+
+                    # If article has a main file image, fetch the file details
+                    if article.get("image_id"):
+                        file_id = article.get("image_id")
+                        file_dict = await self.db.files.find_one({"file_id": file_id})
+                        
+                        if file_dict:
+                            # Create file object with file details
+                            file_obj = {
+                                "file_id": file_dict.get("file_id"),
+                                "file_type": file_dict.get("file_type"),
+                                "file_extension": file_dict.get("file_extension"),
+                                "size": file_dict.get("size"),
+                                "object_name": file_dict.get("object_name"),
+                                "slug": file_dict.get("slug"),
+                                "unique_string": file_dict.get("unique_string")
+                            }
+                            article["main_image_file"] = file_obj
+                            article["image"] = "DEPRECIATED"
+
                     
                     enriched = await enrich_article_data(self.db, article)
                     # Override category with the current category document
@@ -543,7 +662,7 @@ class ArticleRepository:
                     "first_name": 1,
                     "last_name": 1,
                     "user_name": 1,
-                    "profile_photo_base64": 1
+                    "profile_picture_base64": 1
                 }
             )
             
@@ -555,7 +674,7 @@ class ArticleRepository:
                     "first_name": user.get("first_name", ""),
                     "last_name": user.get("last_name", ""),
                     "user_name": user.get("user_name", ""),
-                    "profile_photo_base64": user.get("profile_photo_base64", "")
+                    "profile_photo_base64": user.get("profile_picture_base64", "")
                 })
                 
             return users_list

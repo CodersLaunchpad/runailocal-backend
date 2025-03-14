@@ -61,10 +61,16 @@ class AuthService:
         # Update last login time
         await self.update_last_login(user_db.id)
 
+        print("user info retrieved: ", user_db)
+        print("file info retrieved: ", user_db.profile_file)
+
         return Token(
             access_token=access_token, 
             token_type="bearer", 
-            profile_picture_base64=user_db.profile_picture_base64,
+            # profile_picture_base64=user_db.profile_picture_base64,
+            profile_picture_base64="DEPRECIATED",
+            profile_file=user_db.profile_file
+
         )
     
     def create_access_token(self, data: TokenData, expires_delta: Optional[timedelta] = None) -> str:
