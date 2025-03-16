@@ -662,7 +662,7 @@ class ArticleRepository:
                     "first_name": 1,
                     "last_name": 1,
                     "user_name": 1,
-                    "profile_photo_base64": 1
+                    "profile_picture_base64": 1
                 }
             )
             
@@ -674,7 +674,7 @@ class ArticleRepository:
                     "first_name": user.get("first_name", ""),
                     "last_name": user.get("last_name", ""),
                     "user_name": user.get("user_name", ""),
-                    "profile_photo_base64": user.get("profile_photo_base64", "")
+                    "profile_photo_base64": user.get("profile_picture_base64", "")
                 })
                 
             return users_list
