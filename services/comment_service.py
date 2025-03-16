@@ -29,6 +29,7 @@ class CommentService:
             comment_data = CommentCreate(
             text=comment.text,
             article_id=comment.article_id,
+            parent_comment_id = comment.parent_comment_id,
             user_id=current_user.id,
             username=current_user.username,
             user_type=current_user.user_details.get("type", "normal"),
