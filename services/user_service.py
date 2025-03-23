@@ -98,6 +98,7 @@ class UserService:
         
         # Insert into database
         created_user = await self.user_repo.create_user(user_dict)
+        created_user = created_user.model_dump()
         
         # Add profile picture URL to response by fetching file details
         if profile_photo_id:
