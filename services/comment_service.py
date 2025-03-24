@@ -1,5 +1,7 @@
 from typing import Dict, Any, List
 from datetime import datetime, timezone
+
+from db.schemas.comments_schema import CommentInDB
 from models.comments_model import CommentCreate, CommentResponse
 from db.schemas.users_schema import UserInDB
 from models.models import ensure_object_id
@@ -24,26 +26,20 @@ class CommentService:
             article = await self.article_repo.get_article_by_id(comment.article_id)
             if not article:
                 raise ValueError("Article not found")
-            
-            # Prepare comment data using a Pydantic model
-            comment_data = CommentCreate(
-            text=comment.text,
-            article_id=comment.article_id,
-            parent_comment_id = comment.parent_comment_id,
-            user_id=current_user.id,
-            username=current_user.username,
-            user_type=current_user.user_details.get("type", "normal"),
-            created_at=datetime.now(timezone.utc)
-            )
-        
-            # Convert the Pydantic model to a dictionary
-            comment_data_dict = comment_data.dict()  # Convert to dictionary
-        
+
+            comment_data = {
+                "text":comment.text,
+                "article_id":comment.article_id,
+                "parent_comment_id" :comment.parent_comment_id,
+                "user_id":current_user.id,
+                "created_at":datetime.now(timezone.utc)
+            }
+
             # Call repository to save comment
-            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id,comment_data_dict)
+            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id,comment_data)
             
             comment_db['id'] = (comment_db['_id'])
-            comment_db['user_id'] = current_user.id
+            # comment_db['user_id'] = current_user.id
             comment_db['username'] = current_user.username
             comment_db['user_first_name'] = current_user.first_name
             comment_db['user_last_name'] = current_user.last_name
@@ -58,32 +54,49 @@ class CommentService:
         """Update an existing comment"""
         try:
             # Check if article exists
-            article = await self.article_repo.get_article_by_id(article_id)
-            if not article:
-                raise ValueError("Article not found")
+            # article = await self.article_repo.get_article_by_id(article_id)
+            # if not article:
+            #     raise ValueError("Article not found")
             
-            # Get the comment
-            comment_db = await self.comment_repo.get_comment_from_article(article_id, comment_id)
+            # Get the comment 
+            comment_db = await self.comment_repo.get_comment_by_id(comment_id)
+           
             if not comment_db:
                 raise ValueError("Comment not found")
-            
+                        
             # Check if user is comment author or admin
-            if str(comment_db.user_id) != str(current_user.id) and current_user.user_type != "admin":
+            if str(comment_db.get("user_id")) != str(current_user.id) and current_user.user_type != "admin":
                 raise PermissionError("Not enough permissions")
-            
+
             # Update data
             update_data = {
                 "text": text,
                 "updated_at": datetime.now(timezone.utc)
             }
+            print("hello from service" ,update_data)
             
             # Call repository to update comment
-            updated_comment_db = await self.comment_repo.update_comment_in_article(article_id, comment_id, update_data)
-            if not updated_comment_db:
+            updated_comment = await self.comment_repo.update_comment(comment_id, update_data)
+            if not updated_comment:
                 raise ValueError("Failed to update comment")
             
+            response_data = {
+            "id": updated_comment.get("_id"),
+            "parent_comment_id": updated_comment["parent_comment_id"],
+            "text": updated_comment.get("text"),
+            "article_id": article_id,
+            "user_id": str(current_user.id),
+            "username": current_user.username,
+            "user_first_name": current_user.first_name,
+            "user_last_name": current_user.last_name,
+            "user_type": current_user.user_details.get("type", "normal"),
+            "created_at": updated_comment["created_at"],  # Keep original creation time
+            "updated_at": updated_comment["updated_at"]  # Use the new update time
+            }
+            
+            
             # Convert to API response model
-            return comment_db_to_response(updated_comment_db)
+            return comment_db_to_response(response_data)
         except Exception as e:
             raise Exception(f"Error updating comment: {str(e)}")
     
@@ -91,21 +104,22 @@ class CommentService:
         """Delete a comment"""
         try:
             # Check if article exists
-            article = await self.article_repo.get_article_by_id(article_id)
-            if not article:
-                raise ValueError("Article not found")
+            # article = await self.article_repo.get_article_by_id(article_id)
+            # if not article:
+            #     raise ValueError("Article not found")
             
             # Get the comment
-            comment_db = await self.comment_repo.get_comment_from_article(article_id, comment_id)
+            comment_db = await self.comment_repo.get_comment_by_id(comment_id)
             if not comment_db:
                 raise ValueError("Comment not found")
+
             
             # Check if user is comment author or admin
-            if str(comment_db.user_id) != str(current_user.id) and current_user.user_type != "admin":
+            if str(comment_db.get("user_id")) != str(current_user.id) and current_user.user_type != "admin":
                 raise PermissionError("Not enough permissions")
             
             # Call repository to delete the comment
-            success = await self.comment_repo.delete_comment_from_article(article_id, comment_id)
+            success = await self.comment_repo.soft_delete_comment(comment_id)
             if not success:
                 raise ValueError("Failed to delete comment")
                 
@@ -123,7 +137,6 @@ class CommentService:
             
             # Get all comments
             comments_db = await self.comment_repo.get_all_comments_for_article(article_id)
-            
             # Convert to API response models
             return [comment_db_to_response(comment) for comment in comments_db]
         except Exception as e:
