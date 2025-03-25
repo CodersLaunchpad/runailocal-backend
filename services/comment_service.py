@@ -24,7 +24,7 @@ class CommentService:
     async def create_comment(self, comment: CommentCreate, current_user: UserInDB) -> CommentResponse:
         """Create a new comment on an article"""
         try:
-            # Check if article exists
+            # Check if article exists by ID
             article = await self.article_repo.get_article_by_id(comment.article_id)
             if not article:
                 raise ValueError("Article not found")
@@ -53,13 +53,19 @@ class CommentService:
         except Exception as e:
             raise Exception(f"Error creating comment: {str(e)}")
     
-    async def update_comment(self, article_id: str, comment_id: str, text: str, current_user: UserInDB) -> CommentResponse:
+    async def update_comment(self, article_id_or_slug: str, comment_id: str, text: str, current_user: UserInDB) -> CommentResponse:
         """Update an existing comment"""
         try:
-            # Check if article exists
-            # article = await self.article_repo.get_article_by_id(article_id)
-            # if not article:
-            #     raise ValueError("Article not found")
+            # Get the article by ID or slug if it's provided
+            if article_id_or_slug and not ObjectId.is_valid(article_id_or_slug):
+                # It's a slug
+                article = await self.article_repo.get_article_by_slug(article_id_or_slug)
+                if not article:
+                    raise ValueError("Article not found")
+                article_id = str(article.get("_id"))
+            else:
+                # It's already an ID
+                article_id = article_id_or_slug
             
             # Get the comment 
             comment_db = await self.comment_repo.get_comment_by_id(comment_id)
@@ -76,7 +82,6 @@ class CommentService:
                 "text": text,
                 "updated_at": datetime.now(timezone.utc)
             }
-            print("hello from service" ,update_data)
             
             # Call repository to update comment
             updated_comment = await self.comment_repo.update_comment(comment_id, update_data)
@@ -103,13 +108,15 @@ class CommentService:
         except Exception as e:
             raise Exception(f"Error updating comment: {str(e)}")
     
-    async def delete_comment(self, article_id: str, comment_id: str, current_user: UserInDB) -> bool:
+    async def delete_comment(self, article_id_or_slug: str, comment_id: str, current_user: UserInDB) -> bool:
         """Delete a comment"""
         try:
-            # Check if article exists
-            # article = await self.article_repo.get_article_by_id(article_id)
-            # if not article:
-            #     raise ValueError("Article not found")
+            # Get the article by ID or slug if provided 
+            if article_id_or_slug and not ObjectId.is_valid(article_id_or_slug):
+                # It's a slug
+                article = await self.article_repo.get_article_by_slug(article_id_or_slug)
+                if not article:
+                    raise ValueError("Article not found")
             
             # Get the comment
             comment_db = await self.comment_repo.get_comment_by_id(comment_id)
@@ -130,13 +137,20 @@ class CommentService:
         except Exception as e:
             raise Exception(f"Error deleting comment: {str(e)}")
     
-    async def get_all_comments(self, article_id: str) -> List[CommentResponse]:
+    async def get_all_comments(self, article_identifier: str) -> List[CommentResponse]:
         """Get all comments for an article"""
         try:
-            # Check if article exists
-            article = await self.article_repo.get_article_by_id(article_id)
+            # Auto-detect if identifier is an ID or slug
+            if ObjectId.is_valid(article_identifier):
+                article = await self.article_repo.get_article_by_id(article_identifier)
+            else:
+                article = await self.article_repo.get_article_by_slug(article_identifier)
+                
             if not article:
                 raise ValueError("Article not found")
+            
+            # Get the article ID
+            article_id = str(article.get("_id"))
             
             # Get all comments
             comments_db = await self.comment_repo.get_all_comments_for_article(article_id)
@@ -160,16 +174,26 @@ class CommentService:
         except Exception as e:
             raise Exception(f"Error getting comments by IDs: {str(e)}")
             
-    async def get_comments_tree(self, article_id: str) -> List[Dict[str, Any]]:
+    async def get_comments_tree(self, article_identifier: str) -> List[Dict[str, Any]]:
         """
         Get hierarchical comments tree for an article
         Returns a structured tree of comments with parent-child relationships
+        
+        Parameters:
+        - article_identifier: Either the ID or slug of the article (auto-detected)
         """
         try:
-            # Check if article exists
-            article = await self.article_repo.get_article_by_id(article_id)
+            # Auto-detect if identifier is an ID or slug
+            if ObjectId.is_valid(article_identifier):
+                article = await self.article_repo.get_article_by_id(article_identifier)
+            else:
+                article = await self.article_repo.get_article_by_slug(article_identifier)
+                
             if not article:
                 raise ValueError("Article not found")
+            
+            # Get the article ID
+            article_id = str(article.get("_id"))
             
             # Convert article_id to ObjectId if it's a string
             if isinstance(article_id, str):
