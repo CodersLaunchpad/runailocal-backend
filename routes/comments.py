@@ -85,11 +85,24 @@ async def get_comments_by_ids(
 @router.get("/{article_id}", response_model=list[CommentResponse])
 async def get_article_comments(
     article_id: str,
+    as_tree: bool = False,
     comment_service: CommentServiceDep = None
 ):
-    """Get all comments for an article"""
+    """Get comments for an article
+    
+    Parameters:
+    - article_id: The ID of the article to get comments for
+    - as_tree: If true, returns comments in a hierarchical tree structure with nested children.
+               If false (default), returns a flat list of all comments.
+    """
     try:
-        comments = await comment_service.get_all_comments(article_id)
+        if as_tree:
+            # Get comments in tree structure
+            comments = await comment_service.get_comments_tree(article_id)
+        else:
+            # Get flat list of comments
+            comments = await comment_service.get_all_comments(article_id)
+        
         return comments
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
