@@ -1,6 +1,8 @@
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 
+from bson import ObjectId
+
 from db.schemas.comments_schema import CommentInDB
 from models.comments_model import CommentCreate, CommentResponse
 from db.schemas.users_schema import UserInDB
@@ -27,24 +29,25 @@ class CommentService:
             if not article:
                 raise ValueError("Article not found")
 
+            # Prepare comment data with all required fields
             comment_data = {
-                "text":comment.text,
-                "article_id":comment.article_id,
-                "parent_comment_id" :comment.parent_comment_id,
-                "user_id":current_user.id,
-                "created_at":datetime.now(timezone.utc)
+                "text": comment.text,
+                "article_id": ObjectId(comment.article_id),
+                "parent_comment_id": ObjectId(comment.parent_comment_id) if ObjectId.is_valid(comment.parent_comment_id) else None,
+                "user_id": ObjectId(current_user.id),
+                "username": current_user.username,
+                "user_first_name": current_user.first_name,
+                "user_last_name": current_user.last_name,
+                "user_type": current_user.user_details.get("type", "normal"),
+                "created_at": datetime.now(timezone.utc)
             }
 
             # Call repository to save comment
-            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id,comment_data)
+            comment_db = await self.comment_repo.add_comment_to_article(comment.article_id, comment_data)
             
-            comment_db['id'] = (comment_db['_id'])
-            # comment_db['user_id'] = current_user.id
-            comment_db['username'] = current_user.username
-            comment_db['user_first_name'] = current_user.first_name
-            comment_db['user_last_name'] = current_user.last_name
-            comment_db['user_type'] = current_user.user_details.get("type", "normal")
-            comment_db['created_at'] = datetime.now(timezone.utc)
+            # Ensure all required fields are present in the response
+            comment_db["id"] = comment_db["_id"]
+            
             # Convert to API response model
             return comment_db_to_response(comment_db)
         except Exception as e:

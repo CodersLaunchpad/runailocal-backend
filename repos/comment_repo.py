@@ -224,15 +224,39 @@ class CommentRepository:
             # Convert cursor to list
             comments = await cursor.to_list(length=100)
             
-            # Convert ObjectIds to strings for JSON serialization
+            # Get user information for each comment
             for comment in comments:
+                # Convert ObjectIds to strings for JSON serialization first
                 if isinstance(comment.get("_id"), ObjectId):
                     comment["_id"] = str(comment["_id"])
-                if isinstance(comment.get("user_id"), ObjectId):
-                    comment["user_id"] = str(comment["user_id"])
+                    comment["id"] = comment["_id"]  # Add id field for consistency
                 if isinstance(comment.get("article_id"), ObjectId):
                     comment["article_id"] = str(comment["article_id"])
-                  
+                
+                # Safely get user information if user_id exists
+                if "user_id" in comment:
+                    user_id = comment["user_id"]
+                    if isinstance(user_id, str):
+                        user_id = ObjectId(user_id)
+                    elif isinstance(user_id, ObjectId):
+                        user_id = user_id
+                    else:
+                        continue  # Skip if user_id is in an invalid format
+                        
+                    user = await self.db.users.find_one({"_id": user_id})
+                    if user:
+                        comment["user_id"] = str(user["_id"])
+                        comment["username"] = user.get("username")
+                        comment["user_first_name"] = user.get("first_name")
+                        comment["user_last_name"] = user.get("last_name")
+                        comment["user_type"] = user.get("user_details", {}).get("type", "normal")
+                    else:
+                        # Set default values if user not found
+                        comment["user_id"] = str(user_id)
+                        comment["username"] = "Unknown User"
+                        comment["user_first_name"] = "Unknown"
+                        comment["user_last_name"] = "User"
+                        comment["user_type"] = "normal"
            
             return comments
         
