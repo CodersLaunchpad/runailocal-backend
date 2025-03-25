@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class CommentBase(BaseModel):
@@ -20,3 +20,7 @@ class CommentResponse(CommentBase):
     user_type: str
     created_at: datetime
     updated_at: Optional[datetime] = None
+    children: List["CommentResponse"] = Field(default_factory=list)
+
+# Add this line to resolve the forward reference
+CommentResponse.model_rebuild()

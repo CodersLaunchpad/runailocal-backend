@@ -31,11 +31,13 @@ class CommentRepository:
             # }
             
             result = await self.db.comments.insert_one(comment_data)
-            # # Add comment to article
-            # result = await self.db.articles.update_one(
-            #     {"_id": article_object_id},
-            #     {"$push": {"comments": comment_obj}}
-            # )
+            
+            # Add comment ID to article's comments array
+            await self.db.articles.update_one(
+                {"_id": article_object_id},
+                {"$push": {"comments": result.inserted_id}}
+            )
+            
             created_comment = await self.db.comments.find_one({"_id": result.inserted_id})
             if created_comment:
                 created_comment["_id"] = str(created_comment["_id"])  # Convert ObjectId to string
@@ -171,6 +173,15 @@ class CommentRepository:
             # Convert IDs to ObjectId
             comment_object_id = ObjectId(comment_id)
             
+            # Get the comment to find its article_id
+            comment = await self.db.comments.find_one({"_id": comment_object_id})
+            if comment and "article_id" in comment:
+                # Remove the comment ID from the article's comments array
+                await self.db.articles.update_one(
+                    {"_id": comment["article_id"]},
+                    {"$pull": {"comments": comment_object_id}}
+                )
+            
             # Update the comment with deleted_at timestamp
             result = await self.db.comments.find_one_and_update(
             {"_id": comment_object_id},
@@ -215,14 +226,82 @@ class CommentRepository:
         Returns a list of comments, excluding those that have been soft deleted
         """
         try:
+            # Convert string ID to ObjectId if needed
+            article_obj_id = article_id
+            if isinstance(article_id, str) and ObjectId.is_valid(article_id):
+                article_obj_id = ObjectId(article_id)
+            
             # Query for all comments for this article where deleted_at doesn't exist
             cursor = self.db.comments.find({
-                "article_id": article_id,
+                "article_id": article_obj_id,
                 "deleted_at": {"$exists": False}
             })
             
             # Convert cursor to list
             comments = await cursor.to_list(length=100)
+            
+            # Convert ObjectIds to strings for JSON serialization
+            for comment in comments:
+                if isinstance(comment.get("_id"), ObjectId):
+                    comment["_id"] = str(comment["_id"])
+                    comment["id"] = comment["_id"]  # Add id field for consistency
+                if isinstance(comment.get("article_id"), ObjectId):
+                    comment["article_id"] = str(comment["article_id"])
+                if isinstance(comment.get("parent_comment_id"), ObjectId):
+                    comment["parent_comment_id"] = str(comment["parent_comment_id"])
+                
+                # Safely get user information if user_id exists
+                if "user_id" in comment:
+                    user_id = comment["user_id"]
+                    if isinstance(user_id, str):
+                        user_id = ObjectId(user_id)
+                    elif isinstance(user_id, ObjectId):
+                        user_id = user_id
+                    else:
+                        continue  # Skip if user_id is in an invalid format
+                        
+                    user = await self.db.users.find_one({"_id": user_id})
+                    if user:
+                        comment["user_id"] = str(user["_id"])
+                        comment["username"] = user.get("username")
+                        comment["user_first_name"] = user.get("first_name")
+                        comment["user_last_name"] = user.get("last_name")
+                        comment["user_type"] = user.get("user_details", {}).get("type", "normal")
+                    else:
+                        # Set default values if user not found
+                        comment["user_id"] = str(user_id)
+                        comment["username"] = "Unknown User"
+                        comment["user_first_name"] = "Unknown"
+                        comment["user_last_name"] = "User"
+                        comment["user_type"] = "normal"
+            
+            return comments
+        except Exception as e:
+            import traceback
+            print(f"Error in get_all_comments_for_article: {str(e)}")
+            print(traceback.format_exc())
+            raise Exception(f"Error in get_all_comments_for_article: {str(e)}")
+            
+    async def get_comments_by_ids(self, comment_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get multiple comments by their IDs
+        Returns a list of comments, excluding those that have been soft deleted
+        """
+        try:
+            # Convert string IDs to ObjectIds
+            object_ids = [ObjectId(comment_id) for comment_id in comment_ids if ObjectId.is_valid(comment_id)]
+            
+            if not object_ids:
+                return []
+                
+            # Query for comments with matching IDs and where deleted_at doesn't exist
+            cursor = self.db.comments.find({
+                "_id": {"$in": object_ids},
+                "deleted_at": {"$exists": False}
+            })
+            
+            # Convert cursor to list
+            comments = await cursor.to_list(length=len(object_ids))
             
             # Get user information for each comment
             for comment in comments:
@@ -257,8 +336,8 @@ class CommentRepository:
                         comment["user_first_name"] = "Unknown"
                         comment["user_last_name"] = "User"
                         comment["user_type"] = "normal"
-           
+            
             return comments
         
         except Exception as e:
-            raise Exception(f"Error in get_all_comments_for_article: {str(e)}")
+            raise Exception(f"Error in get_comments_by_ids: {str(e)}")

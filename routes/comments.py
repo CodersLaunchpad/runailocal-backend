@@ -60,6 +60,28 @@ async def delete_comment(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to delete comment: {str(e)}")
 
+@router.get("/by-ids/", response_model=list[CommentResponse])
+async def get_comments_by_ids(
+    comment_ids: str,
+    comment_service: CommentServiceDep = None
+):
+    """Get comments by their IDs
+    
+    The comment_ids parameter should be a comma-separated list of comment IDs.
+    For example: ?comment_ids=id1,id2,id3
+    """
+    try:
+        # Parse the comma-separated list of IDs
+        ids_list = comment_ids.split(",") if comment_ids else []
+        
+        # Get comments by IDs
+        comments = await comment_service.get_comments_by_ids(ids_list)
+        return comments
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to get comments: {str(e)}")
+
 @router.get("/{article_id}", response_model=list[CommentResponse])
 async def get_article_comments(
     article_id: str,
