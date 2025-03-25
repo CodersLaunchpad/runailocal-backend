@@ -21,18 +21,24 @@ async def create_comment(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to create comment: {str(e)}")
 
-@router.put("/{article_id}/{comment_id}", response_model=CommentResponse)
+@router.put("/{article_identifier}/{comment_id}", response_model=CommentResponse)
 async def update_comment(
-    article_id: str,
+    article_identifier: str,
     comment_id: str,
     text: str,
     current_user: UserInDB = Depends(get_current_active_user),
     comment_service: CommentServiceDep = None
 ):
-    """Update an existing comment"""
+    """Update an existing comment
+    
+    Parameters:
+    - article_identifier: Either the ID or slug of the article (automatically detected)
+    - comment_id: The ID of the comment to update
+    - text: The new text for the comment
+    """
     try:
         updated_comment = await comment_service.update_comment(
-            article_id, comment_id, text, current_user
+            article_identifier, comment_id, text, current_user
         )
         return updated_comment
     except ValueError as e:
@@ -42,16 +48,21 @@ async def update_comment(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to update comment: {str(e)}")
 
-@router.delete("/{article_id}/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{article_identifier}/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_comment(
-    article_id: str,
+    article_identifier: str,
     comment_id: str,
     current_user: UserInDB = Depends(get_current_active_user),
     comment_service: CommentServiceDep = None
 ):
-    """Delete a comment"""
+    """Delete a comment
+    
+    Parameters:
+    - article_identifier: Either the ID or slug of the article (automatically detected)
+    - comment_id: The ID of the comment to delete
+    """
     try:
-        await comment_service.delete_comment(article_id, comment_id, current_user)
+        await comment_service.delete_comment(article_identifier, comment_id, current_user)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -60,14 +71,50 @@ async def delete_comment(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to delete comment: {str(e)}")
 
-@router.get("/{article_id}", response_model=list[CommentResponse])
-async def get_article_comments(
-    article_id: str,
+@router.get("/by-ids/", response_model=list[CommentResponse])
+async def get_comments_by_ids(
+    comment_ids: str,
     comment_service: CommentServiceDep = None
 ):
-    """Get all comments for an article"""
+    """Get comments by their IDs
+    
+    The comment_ids parameter should be a comma-separated list of comment IDs.
+    For example: ?comment_ids=id1,id2,id3
+    """
     try:
-        comments = await comment_service.get_all_comments(article_id)
+        # Parse the comma-separated list of IDs
+        ids_list = comment_ids.split(",") if comment_ids else []
+        
+        # Get comments by IDs
+        comments = await comment_service.get_comments_by_ids(ids_list)
+        return comments
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to get comments: {str(e)}")
+
+@router.get("/{article_identifier}", response_model=list[CommentResponse])
+async def get_article_comments(
+    article_identifier: str,
+    as_tree: bool = False,
+    comment_service: CommentServiceDep = None
+):
+    """Get comments for an article
+    
+    Parameters:
+    - article_identifier: Either the ID or slug of the article to get comments for
+      (automatically detected based on format)
+    - as_tree: If true, returns comments in a hierarchical tree structure with nested children.
+               If false (default), returns a flat list of all comments.
+    """
+    try:
+        if as_tree:
+            # Get comments in tree structure
+            comments = await comment_service.get_comments_tree(article_identifier)
+        else:
+            # Get flat list of comments
+            comments = await comment_service.get_all_comments(article_identifier)
+        
         return comments
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
