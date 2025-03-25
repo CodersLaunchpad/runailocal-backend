@@ -291,3 +291,22 @@ class MessageInDB(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
+
+class AppSettings(BaseModel):
+    """Application-wide settings"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    auto_publish_articles: bool = False
+    updated_at: datetime = Field(default_factory=get_current_utc_time)
+    updated_by: Optional[str] = None
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_schema_extra = {
+            "example": {
+                "auto_publish_articles": False,
+                "updated_at": "2024-03-25T12:00:00Z",
+                "updated_by": "admin_user_id"
+            }
+        }
