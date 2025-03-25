@@ -23,7 +23,7 @@ from services.user_service import UserService
 
 router = APIRouter()
 # User routes
-@router.post("/register", response_model=UserResponse)
+@router.post("/register") # response_model=UserResponse
 async def create_user(
     username: str = Form(...),
     email: EmailStr = Form(...),

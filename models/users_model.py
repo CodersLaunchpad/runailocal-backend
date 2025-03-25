@@ -38,7 +38,7 @@ class UserResponse(UserBase):
     """Model for returning user information to clients"""
     id: str
     user_type: str
-    profile_picture_base64: str
+    # profile_picture_base64: str
     user_details: Dict[str, Any] = {}
     
     likes: List[str] = []
