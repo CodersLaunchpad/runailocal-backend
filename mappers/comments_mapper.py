@@ -1,6 +1,6 @@
-from models.comments_model import CommentResponse
+from models.comments_model import CommentResponse, AuthorInfo
 from db.schemas.comments_schema import CommentInDB
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from db.mongodb import convert_to_object_id
 from models.models import prepare_mongo_document, clean_document
 from datetime import datetime
@@ -24,6 +24,22 @@ def comment_db_to_response(comment_db: CommentInDB) -> CommentResponse:
         "created_at": comment_dict.get("created_at", datetime.utcnow()),
         "updated_at": comment_dict.get("updated_at")
     }
+    
+    # Create author info object
+    author_info = {
+        "id": str(comment_dict.get("user_id", "")),
+        "username": comment_dict.get("username", "Unknown User"),
+        "first_name": comment_dict.get("user_first_name", "Unknown"),
+        "last_name": comment_dict.get("user_last_name", "User"),
+        "profile_picture_base64": "DEPRECIATED",
+        "bookmarks": comment_dict.get("bookmarks", []),
+        "profile_photo_id": comment_dict.get("profile_photo_id"),
+        "profile_file": comment_dict.get("profile_file"),
+        "user_type": comment_dict.get("user_type", "normal")
+    }
+    
+    # Add author info to response data
+    response_data["author"] = author_info
     
     return CommentResponse(**response_data)
 

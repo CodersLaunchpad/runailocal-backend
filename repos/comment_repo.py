@@ -262,11 +262,33 @@ class CommentRepository:
                         
                     user = await self.db.users.find_one({"_id": user_id})
                     if user:
+                        # Basic user information
                         comment["user_id"] = str(user["_id"])
                         comment["username"] = user.get("username")
                         comment["user_first_name"] = user.get("first_name")
                         comment["user_last_name"] = user.get("last_name")
                         comment["user_type"] = user.get("user_details", {}).get("type", "normal")
+                        
+                        # Add bookmarks for author
+                        comment["bookmarks"] = [str(bookmark_id) for bookmark_id in user.get("bookmarks", [])]
+                        
+                        # Add profile photo information
+                        profile_photo_id = user.get("profile_photo_id")
+                        if profile_photo_id:
+                            comment["profile_photo_id"] = profile_photo_id
+                            # Get the file details
+                            file = await self.db.files.find_one({"file_id": profile_photo_id})
+                            if file:
+                                profile_file = {
+                                    "file_id": file.get("file_id"),
+                                    "file_type": file.get("file_type"),
+                                    "file_extension": file.get("file_extension"),
+                                    "size": file.get("size"),
+                                    "object_name": file.get("object_name"),
+                                    "slug": file.get("slug"),
+                                    "unique_string": file.get("unique_string")
+                                }
+                                comment["profile_file"] = profile_file
                     else:
                         # Set default values if user not found
                         comment["user_id"] = str(user_id)
@@ -274,6 +296,7 @@ class CommentRepository:
                         comment["user_first_name"] = "Unknown"
                         comment["user_last_name"] = "User"
                         comment["user_type"] = "normal"
+                        comment["bookmarks"] = []
             
             return comments
         except Exception as e:
@@ -311,6 +334,8 @@ class CommentRepository:
                     comment["id"] = comment["_id"]  # Add id field for consistency
                 if isinstance(comment.get("article_id"), ObjectId):
                     comment["article_id"] = str(comment["article_id"])
+                if isinstance(comment.get("parent_comment_id"), ObjectId):
+                    comment["parent_comment_id"] = str(comment["parent_comment_id"])
                 
                 # Safely get user information if user_id exists
                 if "user_id" in comment:
@@ -324,11 +349,33 @@ class CommentRepository:
                         
                     user = await self.db.users.find_one({"_id": user_id})
                     if user:
+                        # Basic user information
                         comment["user_id"] = str(user["_id"])
                         comment["username"] = user.get("username")
                         comment["user_first_name"] = user.get("first_name")
                         comment["user_last_name"] = user.get("last_name")
                         comment["user_type"] = user.get("user_details", {}).get("type", "normal")
+                        
+                        # Add bookmarks for author
+                        comment["bookmarks"] = [str(bookmark_id) for bookmark_id in user.get("bookmarks", [])]
+                        
+                        # Add profile photo information
+                        profile_photo_id = user.get("profile_photo_id")
+                        if profile_photo_id:
+                            comment["profile_photo_id"] = profile_photo_id
+                            # Get the file details
+                            file = await self.db.files.find_one({"file_id": profile_photo_id})
+                            if file:
+                                profile_file = {
+                                    "file_id": file.get("file_id"),
+                                    "file_type": file.get("file_type"),
+                                    "file_extension": file.get("file_extension"),
+                                    "size": file.get("size"),
+                                    "object_name": file.get("object_name"),
+                                    "slug": file.get("slug"),
+                                    "unique_string": file.get("unique_string")
+                                }
+                                comment["profile_file"] = profile_file
                     else:
                         # Set default values if user not found
                         comment["user_id"] = str(user_id)
@@ -336,6 +383,7 @@ class CommentRepository:
                         comment["user_first_name"] = "Unknown"
                         comment["user_last_name"] = "User"
                         comment["user_type"] = "normal"
+                        comment["bookmarks"] = []
             
             return comments
         
