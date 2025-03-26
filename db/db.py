@@ -10,6 +10,7 @@ from config import (
     DB_CONNECT_TIMEOUT_MS
 )
 from logger.logger import logger
+from .init_db import init_db_indexes
 
 import asyncio
 from typing import Optional
@@ -43,6 +44,9 @@ async def init_db():
             # Test connection
             await client.admin.command('ping')
             logger.info("Successfully connected to MongoDB")
+            
+            # Initialize database indexes
+            await init_db_indexes(db)
             return
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB (attempt {attempt+1}/{DB_MAX_RECONNECT_ATTEMPTS}): {e}")
