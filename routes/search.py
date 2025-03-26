@@ -4,6 +4,7 @@ from datetime import datetime
 from models.models import ArticleStatus
 from repos.article_repo import ArticleRepository
 from db.db import get_db
+from dependencies.auth import get_current_user
 from bson.objectid import ObjectId
 
 router = APIRouter()
@@ -17,13 +18,15 @@ async def search_articles(
     end_date: Optional[datetime] = Query(None, description="Filter articles created before this date"),
     skip: int = Query(0, description="Number of results to skip"),
     limit: Optional[int] = Query(None, description="Maximum number of results to return. If not provided, returns all matching articles."),
-    db = Depends(get_db)
+    db = Depends(get_db),
+    current_user = Depends(get_current_user)  # Optional dependency
 ):
     """
     Public search endpoint for articles.
     Only shows published articles.
     Search across article name, content, author name, and author username.
     Returns all matching articles by default unless limit is specified.
+    If user is authenticated, includes bookmark information for each article.
     """
     article_repo = ArticleRepository(db)
     
@@ -82,7 +85,7 @@ async def search_articles(
         query=search_query,
         skip=skip,
         limit=effective_limit,  # Use effective_limit instead of None
-        current_user=None  # No current user for public endpoint
+        current_user=current_user  # Pass current_user to include bookmark information
     )
     
     return {
