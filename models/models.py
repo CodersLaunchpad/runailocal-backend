@@ -1,10 +1,11 @@
 from enum import Enum
 from pydantic import BaseModel, Field, EmailStr, validator
 from pydantic import GetCoreSchemaHandler
-from typing import Annotated, List, Optional, Dict, Any, ClassVar, Type
+from typing import Annotated, List, Optional, Dict, Any, ClassVar, Type, Union
 from datetime import datetime, timezone
 from pydantic_core import core_schema
 from bson import ObjectId
+from utils.time import get_current_utc_time
 
 # Helper functions to handle ObjectId
 def ensure_object_id(v):
