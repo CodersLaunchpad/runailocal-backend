@@ -1,13 +1,13 @@
 from typing import Optional, Dict, Any
 from bson import ObjectId
 from models.models import AppSettings
-from db.db import get_db
+from utils.time import get_current_utc_time
 
 class SettingsRepository:
     """Repository for managing application settings"""
     
-    def __init__(self):
-        self.db = get_db()
+    def __init__(self, db):
+        self.db = db
         self.collection = self.db.settings
     
     async def get_settings(self) -> Optional[Dict[str, Any]]:
