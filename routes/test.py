@@ -93,12 +93,13 @@ async def ensure_mongodb_indexes():
     print(f"Ensured MongoDB indexes for {MONGO_COLLECTION}")
 
 class UploadResponse(BaseModel):
+    file_id: str
     filename: str
+    file_type: str
+    file_extension: str
     size: int
-    content_type: str
     object_name: str
     url: Optional[str] = None
-    file_id: str
     slug: str
     uploaded_at: datetime
 
@@ -151,20 +152,32 @@ async def save_file_to_minio(
     content_type = file.content_type or "application/octet-stream"
     file_extension = os.path.splitext(file.filename)[1] if file.filename else ""
     
-    # Use the file_id as part of the object name
-    object_name = f"{folder}/{file_id}{file_extension}" if folder else f"{file_id}{file_extension}"
-    object_name = object_name.lstrip("/")
-    
     # Read file content
     content = await file.read()
     file_size = len(content)
+    
+    # Process image if it's an image file
+    if content_type.startswith('image/'):
+        print(f"[Article Image Processing] Detected image file: {file.filename}")
+        print(f"[Article Image Processing] Original size: {file_size} bytes")
+        
+        # Process the image
+        from services.minio_service import process_image
+        processed_data, content_type = await process_image(content)
+        content = processed_data
+        file_extension = '.webp'  # Change extension to webp
+        print(f"[Article Image Processing] Processed size: {len(processed_data)} bytes")
+    
+    # Use the file_id as part of the object name
+    object_name = f"{folder}/{file_id}{file_extension}" if folder else f"{file_id}{file_extension}"
+    object_name = object_name.lstrip("/")
     
     # Upload to MinIO
     client.put_object(
         bucket_name=MINIO_BUCKET,
         object_name=object_name,
         data=io.BytesIO(content),
-        length=file_size,
+        length=len(content),
         content_type=content_type
     )
     
@@ -183,27 +196,25 @@ async def save_file_to_minio(
     slug = base_slug
     counter = 1
     
-    # Check if the slug already exists
     while await collection.find_one({"slug": slug}):
-        # If it exists, add a numeric suffix and try again
         slug = f"{base_slug}-{counter}"
         counter += 1
-        print(f"Slug {base_slug} already exists, trying {slug}")
+        print(f"Slug {slug} already exists, trying {slug}")
     
-    # Get the current timestamp
-    uploaded_at = datetime.utcnow()
-    
-    return {
-        "filename": file.filename,
-        "size": file_size,
-        "content_type": content_type,
+    # Create file metadata
+    file_data = {
+        "file_id": file_id,
+        "filename": os.path.splitext(file.filename)[0] + file_extension,
+        "file_type": content_type,
+        "file_extension": file_extension.lstrip("."),
+        "size": len(content),
         "object_name": object_name,
         "url": url,
-        "file_id": file_id,
         "slug": slug,
-        "uploaded_at": uploaded_at,
-        "file_extension": file_extension.lstrip('.')
+        "uploaded_at": datetime.utcnow()
     }
+    
+    return file_data
 
 # Function to store file metadata in MongoDB
 async def store_file_metadata_in_mongodb(
@@ -231,7 +242,7 @@ async def store_file_metadata_in_mongodb(
         metadata = {
             "file_id": str(file_data["file_id"]),
             "filename": str(file_data["filename"]),
-            "file_type": str(file_data["content_type"]),
+            "file_type": str(file_data["file_type"]),
             "file_extension": str(file_data["file_extension"]),
             "file_url": str(file_data["url"]),
             "slug": str(file_data["slug"]),
