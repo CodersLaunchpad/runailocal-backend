@@ -6,6 +6,7 @@ from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from repos.article_repo import ArticleRepository
 from repos.user_repo import UserRepository
 from repos.category_repo import CategoryRepository
+from repos.settings_repo import SettingsRepository
 
 class ArticleService:
     """
@@ -18,14 +19,17 @@ class ArticleService:
             article_repository: ArticleRepository, 
             user_repository: UserRepository,
             category_repository: CategoryRepository,
+            settings_repository: SettingsRepository,
         ):
         self.article_repo = article_repository
         self.user_repo = user_repository
         self.category_repo = category_repository
+        self.settings_repo = settings_repository
     
     async def create_article(self, article_data: ArticleCreate, author_id: str) -> Dict[str, Any]:
         """
-        Create a new article and return the created article
+        Create a new article and return the created article.
+        Articles are always created as drafts first.
         """
         try:
             # Validate category and author
@@ -44,6 +48,9 @@ class ArticleService:
             article_dict["likes"] = 0
             article_dict["comments"] = []
             article_dict["bookmarked_by"] = []
+            
+            # Always create as draft first
+            article_dict["status"] = "draft"
             
             # Create the article
             created_article = await self.article_repo.create_article(article_dict)
@@ -191,7 +198,9 @@ class ArticleService:
     
     async def request_article_publish(self, article_id: str, current_user_id: str) -> Dict[str, Any]:
         """
-        Request to publish an article (only for article authors)
+        Request to publish an article (only for article authors).
+        If auto-publish is enabled, the article will be published immediately.
+        Otherwise, it will be set to pending for admin review.
         """
         try:
             # Get the article
@@ -208,11 +217,18 @@ class ArticleService:
             if article.get("status") in ["pending", "published"]:
                 return None  # Will be converted to 400 in the route with specific message
             
-            # Update article status to pending
+            # Check auto-publish setting
+            auto_publish = await self.settings_repo.get_auto_publish_setting()
+            
+            # Update article status based on auto-publish setting
             update_data = {
-                "status": "pending",
+                "status": "published" if auto_publish else "pending",
                 "updated_at": get_current_utc_time()
             }
+            
+            # If auto-publishing, set the published_at timestamp
+            if auto_publish:
+                update_data["published_at"] = get_current_utc_time()
             
             # Update the article
             updated_article = await self.article_repo.update_article(article_id, update_data)
