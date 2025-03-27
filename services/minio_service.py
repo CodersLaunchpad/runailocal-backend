@@ -1,5 +1,5 @@
 # app/services/minio_service.py
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from fastapi import UploadFile, HTTPException, status
 from minio import Minio
 import io
@@ -9,9 +9,60 @@ import base64
 import re
 from db.db import get_db
 from config import settings
+from PIL import Image
+import os
 
 # Global minio client - will be initialized by get_object_storage
 minio_client = None
+
+async def process_image(image_data: bytes, max_size: Tuple[int, int] = (1920, 1080), quality: int = 85) -> Tuple[bytes, str]:
+    """
+    Process and compress an image, converting it to WebP format
+    
+    Args:
+        image_data: Raw image data in bytes
+        max_size: Maximum dimensions (width, height)
+        quality: Compression quality (1-100)
+    
+    Returns:
+        Tuple of (processed_image_bytes, content_type)
+    """
+    try:
+        print(f"[Image Processing] Starting image processing...")
+        # Open image from bytes
+        image = Image.open(io.BytesIO(image_data))
+        print(f"[Image Processing] Original image size: {image.size}, mode: {image.mode}")
+        
+        # Convert to RGB if necessary (for PNG with transparency)
+        if image.mode in ('RGBA', 'LA'):
+            print(f"[Image Processing] Converting from {image.mode} to RGB with white background")
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[-1])
+            image = background
+        elif image.mode != 'RGB':
+            print(f"[Image Processing] Converting from {image.mode} to RGB")
+            image = image.convert('RGB')
+        
+        # Resize if larger than max_size while maintaining aspect ratio
+        if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
+            print(f"[Image Processing] Resizing image from {image.size} to max {max_size}")
+            image.thumbnail(max_size, Image.Resampling.LANCZOS)
+        
+        # Save as WebP
+        print(f"[Image Processing] Converting to WebP format with quality {quality}")
+        output = io.BytesIO()
+        image.save(output, format='WEBP', quality=quality, optimize=True)
+        processed_data = output.getvalue()
+        print(f"[Image Processing] Successfully converted to WebP. New size: {len(processed_data)} bytes")
+        
+        return processed_data, 'image/webp'
+        
+    except Exception as e:
+        print(f"[Image Processing] Error processing image: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process image: {str(e)}"
+        )
 
 async def upload_to_minio(
     data: bytes, 
@@ -34,16 +85,34 @@ async def upload_to_minio(
         Dict with file metadata and MinIO information
     """
     try:
+        print(f"[MinIO Upload] Starting upload process for file: {filename}")
+        print(f"[MinIO Upload] Content type: {content_type}")
+        print(f"[MinIO Upload] Original file size: {len(data)} bytes")
+        
+        # Process image if it's an image file
+        if content_type.startswith('image/'):
+            print(f"[MinIO Upload] Detected image file, proceeding with image processing")
+            processed_data, content_type = await process_image(data)
+            data = processed_data
+            # Change extension to webp
+            filename = os.path.splitext(filename)[0] + '.webp'
+            print(f"[MinIO Upload] Image processed successfully. New filename: {filename}")
+        else:
+            print(f"[MinIO Upload] Not an image file, skipping processing")
+        
         # Generate file ID and get extension
         file_id = str(uuid.uuid4())
         file_extension = filename.split('.')[-1].lower()
+        print(f"[MinIO Upload] Generated file_id: {file_id}")
         
         # Setup bucket info
         bucket_name = settings.MINIO_BUCKET
         object_name = f"{folder}/{file_id}.{file_extension}"
+        print(f"[MinIO Upload] Will upload to bucket: {bucket_name}, object: {object_name}")
         
         # Upload to MinIO
         file_size = len(data)
+        print(f"[MinIO Upload] Uploading file of size: {file_size} bytes")
         minio_client.put_object(
             bucket_name=bucket_name,
             object_name=object_name,
@@ -51,9 +120,11 @@ async def upload_to_minio(
             length=file_size,
             content_type=content_type
         )
+        print(f"[MinIO Upload] Successfully uploaded to MinIO")
         
         # Generate a unique string for the slug
         unique_string = file_id[:8]  # Using first 8 chars of UUID for uniqueness
+        print(f"[MinIO Upload] Generated unique string: {unique_string}")
             
         # Return file information
         return {
@@ -67,7 +138,7 @@ async def upload_to_minio(
         }
         
     except Exception as e:
-        print(f"Error uploading to MinIO: {str(e)}")
+        print(f"[MinIO Upload] Error uploading to MinIO: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Failed to upload file: {str(e)}"

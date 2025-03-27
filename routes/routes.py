@@ -7,6 +7,7 @@ from .comments import router as comments_router
 from .messages import router as messages_router
 from .storage import router as storage_router
 from .test import router as test_router
+from .search import router as search_router
 from .settings import router as settings_router
 
 def setup_routes(app: FastAPI):
@@ -62,6 +63,12 @@ def setup_routes(app: FastAPI):
         test_router,
         prefix="/test",
         tags=["test"],
+    )
+
+    app.include_router(
+        search_router,
+        prefix="/search",
+        tags=["search"],
     )
 
     app.include_router(
