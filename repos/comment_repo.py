@@ -187,7 +187,12 @@ class CommentRepository:
             {"_id": comment_object_id},
             {
                 "$set": {
-                    "deleted_at": datetime.now(timezone.utc)
+                    "deleted_at": datetime.now(timezone.utc),
+                    "author": None,
+                    "user_type": None,
+                    "username":None,
+                    "user_first_name":None,
+                    "user_last_name": None,
                 }
             },
             return_document=True
