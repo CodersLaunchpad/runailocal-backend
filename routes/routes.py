@@ -8,6 +8,7 @@ from .messages import router as messages_router
 from .storage import router as storage_router
 from .test import router as test_router
 from .search import router as search_router
+from .settings import router as settings_router
 
 def setup_routes(app: FastAPI):
     # You can add other routes directly to app here if needed
@@ -68,4 +69,10 @@ def setup_routes(app: FastAPI):
         search_router,
         prefix="/search",
         tags=["search"],
+    )
+
+    app.include_router(
+        settings_router,
+        prefix="/settings",
+        tags=["settings"],
     )

@@ -12,6 +12,7 @@ import motor.motor_asyncio
 import pymongo
 import re
 import unicodedata
+from bson import ObjectId
 
 from db.schemas.articles_schema import ArticleCreate
 from dependencies.article import ArticleServiceDep
@@ -459,8 +460,8 @@ async def create_article_test(
     excerpt: str = Form(...),
     content: str = Form(...),
     category_id: str = Form(...),
-    read_time: str = Form(...),
-    user_id: str = Form(...),  # Add user_id as a form parameter
+    read_time: int = Form(...),
+    user_id: str = Form(...),
     image: Optional[UploadFile] = File(None),
     minio_client: Minio = Depends(get_minio_client)
 ):
@@ -473,21 +474,15 @@ async def create_article_test(
     try:
         print(f"Starting article creation for user_id: {user_id}")
         
-        # Create ArticleCreate object from form data
-        article_data = {
-            "name": name,
-            "slug": slug,
-            "excerpt": excerpt,
-            "content": content,
-            "category_id": category_id,
-            "read_time": read_time,
-        }
-        
-        print(f"Article data prepared: {article_data}")
-        
         # Generate a unique article ID
         article_id = str(uuid.uuid4())
         print(f"Generated article_id: {article_id}")
+        
+        # Initialize image-related fields
+        image_file = None
+        image_id = None
+        image_url = None
+        main_image_file = None
         
         # Handle image upload if provided
         if image and image.filename:
@@ -517,9 +512,21 @@ async def create_article_test(
                 metadata_result = await store_file_metadata_in_mongodb(file_data, mongo_collection)
                 print(f"File metadata stored in MongoDB: {metadata_result}")
                 
-                # Set the image URL in the article data
-                article_data["image"] = file_data["url"]
-                print(f"Image URL added to article data: {article_data['image']}")
+                # Set the image-related fields
+                image_file = file_id
+                image_id = file_id
+                image_url = file_data["url"]
+                
+                # Create main_image_file structure
+                main_image_file = {
+                    "file_id": file_data["file_id"],
+                    "file_type": file_data["file_type"],
+                    "file_extension": file_data["file_extension"],
+                    "size": file_data["size"],
+                    "object_name": file_data["object_name"],
+                    "slug": file_data["slug"],
+                    "unique_string": file_data["file_id"].split("-")[0]  # First part of UUID
+                }
                 
             except S3Error as err:
                 print(f"MinIO S3 error: {err}")
@@ -538,40 +545,98 @@ async def create_article_test(
         else:
             print("No image provided with the article")
         
-        # Add code here to save the article itself to MongoDB
-        try:
-            # Create a separate collection for articles
-            article_collection_name = "articles"
-            article_collection = get_mongo_client().database[article_collection_name]
-            
-            # Prepare the complete article document
-            article_doc = {
-                "id": article_id,
-                "user_id": user_id,
-                **article_data,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "status": "draft"  # Default status
-            }
-            
-            # Insert into MongoDB
-            article_result = await article_collection.insert_one(article_doc)
-            print(f"Article stored in MongoDB collection '{article_collection_name}' with ID: {article_result.inserted_id}")
-        except Exception as e:
-            print(f"Error saving article to MongoDB: {str(e)}")
-            # Continue processing - we'll still return a response even if MongoDB storage fails
+        # Create a separate collection for articles
+        article_collection_name = "articles"
+        article_collection = get_mongo_client().database[article_collection_name]
         
-        # Just create a simple response with the article data
-        # since we don't have the article service
+        # Prepare the complete article document with all fields
+        article_doc = {
+            "name": name,
+            "slug": slug,
+            "content": content,
+            "excerpt": excerpt,
+            "image": "DEPRECATED",
+            "read_time": read_time,
+            "category_id": ObjectId(category_id),
+            "author_id": ObjectId(user_id),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "views": 0,
+            "likes": 0,
+            "comments": [],
+            "status": "draft",
+            "is_spotlight": False,
+            "is_popular": False,
+            "image_file": image_file,
+            "image_id": image_id,
+            "liked_by": [],
+            "bookmarked_by": []
+        }
+        
+        # Insert into MongoDB
+        article_result = await article_collection.insert_one(article_doc)
+        print(f"Article stored in MongoDB collection '{article_collection_name}' with ID: {article_result.inserted_id}")
+        
+        # Fetch category information
+        category_collection = get_mongo_client().database["categories"]
+        category = await category_collection.find_one({"_id": ObjectId(category_id)})
+        
+        # Fetch author information
+        user_collection = get_mongo_client().database["users"]
+        author = await user_collection.find_one({"_id": ObjectId(user_id)})
+        
+        # Create the response structure
+        response_article = {
+            "id": str(article_result.inserted_id),
+            "name": article_doc["name"],
+            "slug": article_doc["slug"],
+            "content": article_doc["content"],
+            "excerpt": article_doc["excerpt"],
+            "image": article_doc["image"],
+            "read_time": article_doc["read_time"],
+            "category_id": str(article_doc["category_id"]),
+            "author_id": str(article_doc["author_id"]),
+            "created_at": article_doc["created_at"].isoformat(),
+            "updated_at": article_doc["updated_at"].isoformat(),
+            "views": article_doc["views"],
+            "likes": article_doc["likes"],
+            "comments": article_doc["comments"],
+            "status": article_doc["status"],
+            "is_spotlight": article_doc["is_spotlight"],
+            "is_popular": article_doc["is_popular"],
+            "bookmarked_by": article_doc["bookmarked_by"],
+            "image_file": article_doc["image_file"],
+            "image_id": article_doc["image_id"],
+            "liked_by": article_doc["liked_by"],
+            "is_bookmarked": False,
+            "is_liked": False,
+            "main_image_file": main_image_file,
+            "category": {
+                "id": str(category["_id"]),
+                "name": category.get("name", ""),
+                "slug": category.get("slug", ""),
+                "description": category.get("description", ""),
+                "icon_url": category.get("icon_url"),
+                "color": category.get("color")
+            } if category else None,
+            "author": {
+                "id": str(author["_id"]),
+                "username": author.get("username", ""),
+                "first_name": author.get("first_name", ""),
+                "last_name": author.get("last_name", ""),
+                "profile_picture_base64": "DEPRECIATED",
+                "bookmarks": author.get("bookmarks", []),
+                "profile_photo_id": author.get("profile_photo_id"),
+                "profile_file": author.get("profile_file"),
+                "follower_count": author.get("follower_count", 0),
+                "following_count": author.get("following_count", 0)
+            } if author else None
+        }
+        
+        # Create response data
         response_data = {
             "message": "Article created successfully",
-            "article": {
-                "id": article_id,
-                "user_id": user_id,
-                **article_data,
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            }
+            "article": response_article
         }
         
         print(f"Returning response data: {response_data}")

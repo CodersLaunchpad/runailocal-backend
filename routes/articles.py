@@ -111,6 +111,14 @@ async def get_home_page_articles(
     """
     try:
         home_data = await article_service.get_home_page_articles(get_optional_current_user)
+        # Transform _id to id in the response data
+        # if "by_category" in home_data:
+        #     for category in home_data["by_category"]:
+        #         for article in category["articles"]:
+        #             if "_id" in article:
+        #                 article["id"] = article.pop("_id")
+        #             if "author" in article and "_id" in article["author"]:
+        #                 article["author"]["id"] = article["author"].pop("_id")
         return JSONResponse(content=home_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")

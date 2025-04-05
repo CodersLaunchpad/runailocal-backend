@@ -3,9 +3,11 @@ from typing import Optional, List
 from datetime import datetime
 from models.models import ArticleStatus
 from repos.article_repo import ArticleRepository
+from repos.user_repo import UserRepository
 from db.db import get_db
 from dependencies.auth import get_current_user
 from bson.objectid import ObjectId
+from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional
 
 router = APIRouter()
 
@@ -94,3 +96,49 @@ async def search_articles(
         "skip": skip,
         "limit": limit  # Return the original limit (None if not specified)
     } 
+
+@router.get("/users")
+async def search_users(
+    query: str = Query(..., description="Search query string"),
+    skip: int = Query(0, description="Number of results to skip"),
+    limit: Optional[int] = Query(None, description="Maximum number of results to return. If not provided, returns all matching users."),
+    db = Depends(get_db),
+    current_user = Depends(get_current_user_optional)
+):
+    """
+    Public search endpoint for users.
+    Search across first name, last name, and username.
+    Returns all matching users by default unless limit is specified.
+    Includes is_following flag for each user if request is authenticated.
+    """
+    user_repo = UserRepository(db)
+    
+    # Build the search query for users
+    search_query = {
+        "$or": [
+            {"username": {"$regex": query, "$options": "i"}},
+            {"first_name": {"$regex": query, "$options": "i"}},
+            {"last_name": {"$regex": query, "$options": "i"}}
+        ]
+    }
+    
+    # Get total count for pagination
+    total_count = await db.users.count_documents(search_query)
+    
+    # Get users with the search query
+    # If limit is None, we'll get all users by setting a very high limit
+    effective_limit = limit if limit is not None else total_count
+    
+    users = await user_repo.get_users(
+        query=search_query,
+        skip=skip,
+        limit=effective_limit,
+        current_user=current_user  # Pass current_user to check following status
+    )
+    
+    return {
+        "users": users,
+        "total": total_count,
+        "skip": skip,
+        "limit": limit  # Return the original limit (None if not specified)
+    }

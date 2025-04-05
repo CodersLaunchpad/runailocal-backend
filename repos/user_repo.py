@@ -1216,4 +1216,80 @@ class UserRepository:
                 {"$inc": {"user_details.articles_count": -1}}
             )
         except Exception as e:
-            raise Exception(f"Error decrementing author's article count: {str(e)}")    
+            raise Exception(f"Error decrementing author's article count: {str(e)}")   
+
+    async def get_users(self, query: dict, skip: int = 0, limit: int = 100, current_user=None) -> List[Dict[str, Any]]:
+        """
+        Get users based on a search query with pagination
+        Returns a list of user dictionaries with limited fields
+        Adds is_following flag if current_user is provided
+        """
+        try:
+            # Set up projection to only return required fields
+            projection = {
+                "_id": 1,
+                "username": 1,
+                "first_name": 1,
+                "last_name": 1,
+                "profile_photo_id": 1,
+                "followers": 1  # Include followers to check if current user follows this user
+            }
+            
+            # Find users matching the query with projection
+            users_cursor = self.db.users.find(query, projection).skip(skip).limit(limit)
+            users = await users_cursor.to_list(length=limit)
+            
+            # Get current user's ID if available
+            current_user_id = None
+            if current_user:
+                current_user_id = ensure_object_id(current_user.id) if hasattr(current_user, 'id') else None
+            
+            # Process each user
+            result = []
+            for user in users:
+                # Convert ObjectId to string and create id field
+                user_id = str(user["_id"]) if "_id" in user else None
+                
+                # Check if current user follows this user
+                is_following = False
+                if current_user_id and "followers" in user and user["followers"]:
+                    # Convert follower IDs to strings for comparison
+                    follower_ids = [str(follower_id) for follower_id in user.get("followers", [])]
+                    is_following = str(current_user_id) in follower_ids
+                
+                # If user has a profile photo, fetch the file details
+                profile_file = None
+                if user.get("profile_photo_id"):
+                    file_id = user.get("profile_photo_id")
+                    file_dict = await self.db.files.find_one({"file_id": file_id})
+                    
+                    if file_dict:
+                        # Create file object with file details
+                        profile_file = {
+                            "file_id": file_dict.get("file_id"),
+                            "file_type": file_dict.get("file_type"),
+                            "file_extension": file_dict.get("file_extension"),
+                            "size": file_dict.get("size"),
+                            "object_name": file_dict.get("object_name"),
+                            "slug": file_dict.get("slug"),
+                            "unique_string": file_dict.get("unique_string")
+                        }
+                
+                # Create filtered user with proper handling of fields
+                filtered_user = {
+                    "id": user_id,
+                    "username": user.get("username", ""),
+                    "first_name": user.get("first_name", ""),
+                    "last_name": user.get("last_name", ""),
+                    "profile_photo_id": user.get("profile_photo_id", ""),
+                    "profile_file": profile_file,
+                    "is_following": is_following
+                }
+                
+                # Add to result list
+                result.append(filtered_user)
+            
+            return result
+            
+        except Exception as e:
+            raise Exception(f"Error fetching users: {str(e)}")

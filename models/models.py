@@ -1,10 +1,11 @@
 from enum import Enum
 from pydantic import BaseModel, Field, EmailStr, validator
 from pydantic import GetCoreSchemaHandler
-from typing import Annotated, List, Optional, Dict, Any, ClassVar, Type
+from typing import Annotated, List, Optional, Dict, Any, ClassVar, Type, Union
 from datetime import datetime, timezone
 from pydantic_core import core_schema
 from bson import ObjectId
+from utils.time import get_current_utc_time
 
 # Helper functions to handle ObjectId
 def ensure_object_id(v):
@@ -291,3 +292,24 @@ class MessageInDB(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
+
+class AppSettings(BaseModel):
+    """Application-wide settings"""
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    auto_publish_articles: bool = False
+    auto_upload: bool = False
+    updated_at: datetime = Field(default_factory=get_current_utc_time)
+    updated_by: Optional[str] = None
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_schema_extra = {
+            "example": {
+                "auto_publish_articles": False,
+                "auto_upload": False,
+                "updated_at": "2024-03-25T12:00:00Z",
+                "updated_by": "admin_user_id"
+            }
+        }
