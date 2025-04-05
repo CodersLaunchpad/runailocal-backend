@@ -39,4 +39,9 @@ class SettingsRepository:
     async def get_auto_publish_setting(self) -> bool:
         """Get the auto-publish articles setting"""
         settings = await self.get_settings()
-        return settings.get("auto_publish_articles", False) 
+        return settings.get("auto_publish_articles", False)
+    
+    async def get_auto_upload_setting(self) -> bool:
+        """Get the auto-upload setting"""
+        settings = await self.get_settings()
+        return settings.get("auto_upload", False) 

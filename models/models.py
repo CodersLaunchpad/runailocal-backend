@@ -297,6 +297,7 @@ class AppSettings(BaseModel):
     """Application-wide settings"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     auto_publish_articles: bool = False
+    auto_upload: bool = False
     updated_at: datetime = Field(default_factory=get_current_utc_time)
     updated_by: Optional[str] = None
 
@@ -307,6 +308,7 @@ class AppSettings(BaseModel):
         json_schema_extra = {
             "example": {
                 "auto_publish_articles": False,
+                "auto_upload": False,
                 "updated_at": "2024-03-25T12:00:00Z",
                 "updated_by": "admin_user_id"
             }
