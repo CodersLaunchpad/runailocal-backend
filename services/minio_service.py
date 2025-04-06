@@ -256,3 +256,20 @@ async def get_file_by_id(file_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Error retrieving file: {str(e)}")
         return None
+    
+async def generate_unique_file_id(collection):
+    """
+    Generate a unique file ID that doesn't exist in MongoDB.
+    
+    Args:
+        collection: MongoDB collection to check against
+    
+    Returns:
+        Unique file ID string
+    """
+    while True:
+        file_id = str(uuid.uuid4())
+        # Check if this ID already exists in MongoDB
+        existing = await collection.find_one({"file_id": file_id})
+        if not existing:
+            return file_id
