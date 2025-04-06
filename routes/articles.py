@@ -8,8 +8,9 @@ from db.db import get_object_storage
 from models.models import ArticleStatus, clean_document
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
-from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional
-from dependencies.minio import Minio
+from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional, get_current_active_user
+# from dependencies.minio import Minio
+from minio import Minio
 
 router = APIRouter()
 
@@ -81,6 +82,9 @@ async def read_article(
 @router.put("/{id}", response_model=Dict[str, Any])
 async def update_article(
     id: str,
+    current_user: CurrentActiveUser,
+    article_service: ArticleServiceDep,
+    minio_client: Minio = Depends(get_object_storage),
     name: Optional[str] = Form(None),
     slug: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
@@ -91,10 +95,7 @@ async def update_article(
     tags: Optional[str] = Form(None),
     is_spotlight: Optional[bool] = Form(None),
     is_popular: Optional[bool] = Form(None),
-    image: Optional[UploadFile] = File(None),
-    current_user: CurrentActiveUser = Depends(),
-    article_service: ArticleServiceDep = Depends(),
-    minio_client: Minio = Depends(get_object_storage)
+    image: Optional[UploadFile] = File(None)
 ):
     """
     Update an article.

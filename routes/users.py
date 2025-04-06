@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
 from models.users_model import UserCreate, UserUpdate
 from mappers.users_mapper import UserResponse
-from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser
+from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser, get_current_active_user
 from services import minio_service
 from services.user_service import UserService
 
@@ -112,15 +112,15 @@ async def get_likes(
 
 @router.put("/me", response_model=UserResponse)
 async def update_user(
+    current_user: CurrentActiveUser,
+    user_service: UserService = Depends(get_user_service),
+    minio_client: Minio = Depends(get_object_storage),
     username: Optional[str] = Form(None),
     email: Optional[EmailStr] = Form(None),
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
     bio: Optional[str] = Form(None),
-    profile_picture: Optional[UploadFile] = File(None),
-    current_user: CurrentActiveUser = Depends(),
-    user_service: UserService = Depends(get_user_service),
-    minio_client: Minio = Depends(get_object_storage)
+    profile_picture: Optional[UploadFile] = File(None)
 ):
     """Update current user's profile"""
     try:
