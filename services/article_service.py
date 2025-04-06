@@ -118,18 +118,25 @@ class ArticleService:
         Update an article if the user has permission
         """
         try:
+            print(f"Starting article update for article_id: {article_id}")
+            
             # Get the article
             article = await self.article_repo.get_article_by_id(article_id)
-            
             if not article:
+                print(f"Article not found: {article_id}")
                 return None
                 
             # Check permissions (admin or author)
             user_data = await self.user_repo.get_user_by_id(current_user_id)
+            if not user_data:
+                print(f"User not found: {current_user_id}")
+                return None
+                
             is_admin = user_data.user_type == "admin"
             is_author = str(article.get("author_id")) == current_user_id
             
             if not (is_admin or is_author):
+                print(f"User {current_user_id} does not have permission to update article {article_id}")
                 return None  # Will be converted to 403 in the route
             
             # Prepare update data
@@ -139,12 +146,16 @@ class ArticleService:
                 if v is not None
             }
             
+            print(f"Update data: {update_data}")
+            
             # If there's nothing to update, return the current article
             if not update_data:
+                print("No data to update, returning current article")
                 return await self.article_repo.enrich_article(article)
             
             # If category_id is being updated, validate it
             if "category_id" in update_data and update_data["category_id"]:
+                print(f"Validating category_id: {update_data['category_id']}")
                 await self.category_repo.validate_category(update_data["category_id"])
                 update_data["category_id"] = ensure_object_id(update_data["category_id"])
             
@@ -152,13 +163,21 @@ class ArticleService:
             update_data["updated_at"] = get_current_utc_time()
             
             # Update the article
+            print("Updating article in database")
             updated_article = await self.article_repo.update_article(article_id, update_data)
+            if not updated_article:
+                print(f"Failed to update article: {article_id}")
+                return None
             
             # Enrich and return
-            return await self.article_repo.enrich_article(updated_article)
+            print("Enriching updated article")
+            enriched_article = await self.article_repo.enrich_article(updated_article)
+            print(f"Successfully updated article: {article_id}")
+            return enriched_article
             
         except Exception as e:
-            raise e
+            print(f"Error in update_article: {str(e)}")
+            raise Exception(f"Error updating article: {str(e)}")
     
     async def get_home_page_articles(self, get_optional_current_user=None) -> Dict[str, Any]:
         """
@@ -207,15 +226,15 @@ class ArticleService:
             article = await self.article_repo.get_article_by_id(article_id)
             
             if not article:
-                return None
+                raise ValueError("Article not found")
                 
             # Check if user is the author
             if str(article.get("author_id")) != current_user_id:
-                return None  # Will be converted to 403 in the route
+                raise ValueError("Only the article author can request to publish")
             
             # Check if article is already published or pending
             if article.get("status") in ["pending", "published"]:
-                return None  # Will be converted to 400 in the route with specific message
+                raise ValueError(f"Article is already {article.get('status')}")
             
             # Check auto-publish setting
             auto_publish = await self.settings_repo.get_auto_publish_setting()
@@ -233,11 +252,19 @@ class ArticleService:
             # Update the article
             updated_article = await self.article_repo.update_article(article_id, update_data)
             
+            if not updated_article:
+                raise ValueError("Failed to update article status")
+            
             # Enrich and return
             return await self.article_repo.enrich_article(updated_article)
             
-        except Exception as e:
+        except ValueError as e:
+            # Re-raise validation errors
             raise e
+        except Exception as e:
+            # Log the error and raise a more specific exception
+            print(f"Error in request_article_publish: {str(e)}")
+            raise Exception(f"Error requesting article publish: {str(e)}")
     
     async def delete_article(self, article_id: str, current_user_id: str, current_user_type: str) -> bool:
         """

@@ -3,7 +3,7 @@ import io
 import os
 import random
 from bson import ObjectId
-from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends
+from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends, Request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
 from models.users_model import UserCreate, UserUpdate
 from mappers.users_mapper import UserResponse
-from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser
+from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser, get_current_active_user
 from services import minio_service
 from services.user_service import UserService
 
@@ -112,14 +112,49 @@ async def get_likes(
 
 @router.put("/me", response_model=UserResponse)
 async def update_user(
-    user_update: UserUpdate,
     current_user: CurrentActiveUser,
-    user_service: UserServiceDep
+    user_service: UserService = Depends(get_user_service),
+    minio_client: Minio = Depends(get_object_storage),
+    request: Request = None,
+    profile_picture: Optional[UploadFile] = File(None)
 ):
     """Update current user's profile"""
     try:
+        # Get the JSON body from the request
+        raw_data = await request.json()
+        
+        # Filter the raw data to only include fields that are in the UserUpdate model
+        allowed_fields = {
+            "username", "email", "first_name", "last_name", "bio"
+        }
+        
+        # Create a filtered dictionary with only allowed fields
+        filtered_data = {k: v for k, v in raw_data.items() if k in allowed_fields and v is not None}
+        
+        # Create a UserUpdate object from the filtered data
+        user_update = UserUpdate(**filtered_data)
+        
+        # Handle profile picture upload if provided
+        if profile_picture and profile_picture.filename:
+            # Upload to MinIO and create file record
+            from services.minio_service import upload_profile_picture
+            file_record = await upload_profile_picture(
+                profile_picture=profile_picture,
+                username=current_user.username,
+                minio_client=minio_client
+            )
+            # Pass the file_id to the user update
+            user_update.profile_photo_id = file_record["file_id"]
+        
+        # Update the user
         updated_user = await user_service.update_user(current_user.id, user_update)
+        
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
         return updated_user
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     

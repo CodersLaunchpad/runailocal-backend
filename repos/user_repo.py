@@ -449,8 +449,8 @@ class UserRepository:
             if isinstance(user_dict.get("_id"), ObjectId):
                 user_dict["_id"] = str(user_dict["_id"])
 
-            # If article has a main file image, fetch the file details
-            if user_dict("profile_photo_id"):
+            # If user has a profile photo, fetch the file details
+            if user_dict.get("profile_photo_id"):
                 file_id = user_dict.get("profile_photo_id")
                 file_dict = await self.db.files.find_one({"file_id": file_id})
                 

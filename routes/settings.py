@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 from dependencies.auth import AdminUser
-from repos.settings_repo import SettingsRepository
+from models.models import AppSettingsUpdate
+from dependencies.settings import SettingsRepositoryDep
 
 router = APIRouter()
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_settings(
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Get current application settings (admin only)"""
     try:
@@ -22,9 +23,9 @@ async def get_settings(
 
 @router.put("/", response_model=Dict[str, Any])
 async def update_settings(
-    settings_data: Dict[str, Any],
+    settings_data: AppSettingsUpdate,
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Update application settings (admin only)"""
     try:
@@ -33,6 +34,11 @@ async def update_settings(
             str(current_user.id)
         )
         return updated_settings
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -43,12 +49,12 @@ async def update_settings(
 async def update_auto_publish_setting(
     auto_publish: bool,
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Update auto-publish articles setting (admin only)"""
     try:
         updated_settings = await settings_repo.update_settings(
-            {"auto_publish_articles": auto_publish},
+            AppSettingsUpdate(auto_publish_articles=auto_publish),
             str(current_user.id)
         )
         return updated_settings
