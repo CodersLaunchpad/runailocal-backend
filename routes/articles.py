@@ -4,10 +4,12 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Respons
 from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
+from db.db import get_object_storage
 from models.models import ArticleStatus, clean_document
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
 from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional
+from dependencies.minio import Minio
 
 router = APIRouter()
 
@@ -79,15 +81,88 @@ async def read_article(
 @router.put("/{id}", response_model=Dict[str, Any])
 async def update_article(
     id: str,
-    article_update: ArticleUpdate,
-    current_user: CurrentActiveUser,
-    article_service: ArticleServiceDep
+    name: Optional[str] = Form(None),
+    slug: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    excerpt: Optional[str] = Form(None),
+    category_id: Optional[str] = Form(None),
+    read_time: Optional[int] = Form(None),
+    status: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    is_spotlight: Optional[bool] = Form(None),
+    is_popular: Optional[bool] = Form(None),
+    image: Optional[UploadFile] = File(None),
+    current_user: CurrentActiveUser = Depends(),
+    article_service: ArticleServiceDep = Depends(),
+    minio_client: Minio = Depends(get_object_storage)
 ):
     """
     Update an article.
     Admins can edit any article while non-admins can only edit their own.
     """
     try:
+        # Create a base article data dictionary
+        article_data = {
+            "name": name,
+            "slug": slug,
+            "content": content,
+            "excerpt": excerpt,
+            "category_id": category_id,
+            "read_time": read_time,
+            "status": status,
+            "tags": tags.split(",") if tags else None,
+            "is_spotlight": is_spotlight,
+            "is_popular": is_popular
+        }
+        
+        # Handle image upload if provided
+        if image and image.filename:
+            # Get MongoDB collection for file metadata
+            from db.db import get_db
+            mongo_collection = await get_db()
+            mongo_collection = mongo_collection.files
+            
+            # Generate a unique file ID
+            from services.minio_service import generate_unique_file_id
+            file_id = await generate_unique_file_id(mongo_collection)
+            
+            # Organize by user_id/article_id/files
+            folder = f"{current_user.id}/{id}"
+            
+            # Save the image to MinIO
+            from services.minio_service import upload_to_minio
+            file_data = await upload_to_minio(
+                data=await image.read(),
+                filename=image.filename,
+                content_type=image.content_type,
+                minio_client=minio_client,
+                folder=folder
+            )
+            
+            # Store file metadata in MongoDB with additional user_id and article_id
+            file_data["user_id"] = str(current_user.id)
+            file_data["article_id"] = id
+            
+            # Save to database
+            await mongo_collection.insert_one(file_data)
+            
+            # Set the image-related fields
+            article_data["image_file"] = file_id
+            article_data["image_id"] = file_id
+            
+            # Create main_image_file structure
+            article_data["main_image_file"] = {
+                "file_id": file_data["file_id"],
+                "file_type": file_data["file_type"],
+                "file_extension": file_data["file_extension"],
+                "size": file_data["size"],
+                "object_name": file_data["object_name"],
+                "slug": file_data["slug"],
+                "unique_string": file_data["file_id"].split("-")[0]  # First part of UUID
+            }
+        
+        # Create article update object
+        article_update = ArticleUpdate(**article_data)
         updated_article = await article_service.update_article(id, article_update, str(current_user.id))
         
         if not updated_article:

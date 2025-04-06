@@ -112,12 +112,41 @@ async def get_likes(
 
 @router.put("/me", response_model=UserResponse)
 async def update_user(
-    user_update: UserUpdate,
-    current_user: CurrentActiveUser,
-    user_service: UserServiceDep
+    username: Optional[str] = Form(None),
+    email: Optional[EmailStr] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
+    profile_picture: Optional[UploadFile] = File(None),
+    current_user: CurrentActiveUser = Depends(),
+    user_service: UserService = Depends(get_user_service),
+    minio_client: Minio = Depends(get_object_storage)
 ):
     """Update current user's profile"""
     try:
+        # Create a base user data dictionary
+        user_data = {
+            "username": username,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "bio": bio
+        }
+        
+        # Handle profile picture upload if provided
+        if profile_picture and profile_picture.filename:
+            # Upload to MinIO and create file record
+            from services.minio_service import upload_profile_picture
+            file_record = await upload_profile_picture(
+                profile_picture=profile_picture,
+                username=current_user.username,
+                minio_client=minio_client
+            )
+            # Pass the file_id to the user update
+            user_data["profile_photo_id"] = file_record["file_id"]
+        
+        # Create user update object
+        user_update = UserUpdate(**user_data)
         updated_user = await user_service.update_user(current_user.id, user_update)
         return updated_user
     except Exception as e:
