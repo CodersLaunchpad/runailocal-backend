@@ -413,7 +413,7 @@ class ArticleRepository:
                 async for article in cursor:
                     # Add is_bookmarked field if current_user is valid
                     article["is_bookmarked"] = self.check_if_bookmarked(article, current_user)
-                    article["is_liked"], article["likes"]  = self.check_if_liked(article, current_user)
+                    article["is_liked"], article["likes"] = self.check_if_liked(article, current_user)
 
                     # If article has a main file image, fetch the file details
                     if article.get("image_id"):
@@ -433,15 +433,16 @@ class ArticleRepository:
                             }
                             article["main_image_file"] = file_obj
                             article["image"] = "DEPRECIATED"
-
                     
                     enriched = await enrich_article_data(self.db, article)
                     # Override category with the current category document
                     enriched["category"] = prepare_mongo_document(category)
-                    cat_articles.append(enriched)
+                    # Apply prepare_mongo_document to each article individually
+                    cat_articles.append(prepare_mongo_document(enriched))
                 
                 # Only include categories with articles
                 if cat_articles:
+                    # Apply clean_document to the entire list of articles
                     by_category[category["name"]] = clean_document(cat_articles)
             
             return by_category
