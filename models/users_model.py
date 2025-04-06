@@ -10,6 +10,7 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    bio: Optional[str] = None  # Optional bio field for user profiles
 
 class UserCreate(UserBase):
     """Model for creating a new user"""    
@@ -33,6 +34,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    bio: Optional[str] = None  # Allow updating bio
     user_details: Optional[Dict[str, Any]] = None
 class UserResponse(UserBase):
     """Model for returning user information to clients"""
