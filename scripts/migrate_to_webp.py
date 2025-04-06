@@ -8,13 +8,16 @@ from minio import Minio
 import motor.motor_asyncio
 from dotenv import load_dotenv
 
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+load_dotenv(dotenv_path=env_path)
+
 # Load environment variables
-load_dotenv()
+# load_dotenv()
 
 # Configuration
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_ENDPOINT = os.getenv("MINIO_SERVER", "localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_USERNAME", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_PASSWORD", "minioadmin")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "rail")
 MONGO_URL = os.getenv("DATABASE_URL", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("DATABASE_NAME", "cms")
