@@ -137,10 +137,20 @@ async def request_article_publish(
             raise HTTPException(status_code=404, detail="Article not found")
         
         return JSONResponse(content=result)
+    except ValueError as e:
+        # Handle validation errors from the service layer
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException as e:
+        # Re-raise HTTP exceptions
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+        # Log the full error for debugging
+        print(f"Error in request_article_publish: {str(e)}")
+        # Return a more specific error message
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error requesting article publish: {str(e)}"
+        )
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_article(

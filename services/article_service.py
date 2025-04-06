@@ -207,15 +207,15 @@ class ArticleService:
             article = await self.article_repo.get_article_by_id(article_id)
             
             if not article:
-                return None
+                raise ValueError("Article not found")
                 
             # Check if user is the author
             if str(article.get("author_id")) != current_user_id:
-                return None  # Will be converted to 403 in the route
+                raise ValueError("Only the article author can request to publish")
             
             # Check if article is already published or pending
             if article.get("status") in ["pending", "published"]:
-                return None  # Will be converted to 400 in the route with specific message
+                raise ValueError(f"Article is already {article.get('status')}")
             
             # Check auto-publish setting
             auto_publish = await self.settings_repo.get_auto_publish_setting()
@@ -233,11 +233,19 @@ class ArticleService:
             # Update the article
             updated_article = await self.article_repo.update_article(article_id, update_data)
             
+            if not updated_article:
+                raise ValueError("Failed to update article status")
+            
             # Enrich and return
             return await self.article_repo.enrich_article(updated_article)
             
-        except Exception as e:
+        except ValueError as e:
+            # Re-raise validation errors
             raise e
+        except Exception as e:
+            # Log the error and raise a more specific exception
+            print(f"Error in request_article_publish: {str(e)}")
+            raise Exception(f"Error requesting article publish: {str(e)}")
     
     async def delete_article(self, article_id: str, current_user_id: str, current_user_type: str) -> bool:
         """

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pydantic_core import core_schema
 from bson import ObjectId
 from utils.time import get_current_utc_time
+import os
 
 # Helper functions to handle ObjectId
 def ensure_object_id(v):
@@ -296,8 +297,12 @@ class MessageInDB(BaseModel):
 class AppSettings(BaseModel):
     """Application-wide settings"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
-    auto_publish_articles: bool = False
-    auto_upload: bool = False
+    auto_publish_articles: bool = Field(
+        default=lambda: os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
+    )
+    auto_upload: bool = Field(
+        default=lambda: os.getenv("AUTO_UPLOAD", "false").lower() == "true"
+    )
     updated_at: datetime = Field(default_factory=get_current_utc_time)
     updated_by: Optional[str] = None
 
@@ -313,3 +318,13 @@ class AppSettings(BaseModel):
                 "updated_by": "admin_user_id"
             }
         }
+
+class AppSettingsUpdate(BaseModel):
+    """Model for updating application settings"""
+    auto_publish_articles: Optional[bool] = None
+    auto_upload: Optional[bool] = None
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        populate_by_name = True
+        arbitrary_types_allowed = True
