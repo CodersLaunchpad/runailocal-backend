@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 from dependencies.auth import AdminUser
-from repos.settings_repo import SettingsRepository
 from models.models import AppSettingsUpdate
+from dependencies.settings import SettingsRepositoryDep
 
 router = APIRouter()
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_settings(
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Get current application settings (admin only)"""
     try:
@@ -25,7 +25,7 @@ async def get_settings(
 async def update_settings(
     settings_data: AppSettingsUpdate,
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Update application settings (admin only)"""
     try:
@@ -49,7 +49,7 @@ async def update_settings(
 async def update_auto_publish_setting(
     auto_publish: bool,
     current_user: AdminUser,
-    settings_repo: SettingsRepository = Depends()
+    settings_repo: SettingsRepositoryDep
 ):
     """Update auto-publish articles setting (admin only)"""
     try:
