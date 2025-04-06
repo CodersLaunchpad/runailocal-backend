@@ -3,7 +3,7 @@ import io
 import os
 import random
 from bson import ObjectId
-from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends
+from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends, Request
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -115,23 +115,24 @@ async def update_user(
     current_user: CurrentActiveUser,
     user_service: UserService = Depends(get_user_service),
     minio_client: Minio = Depends(get_object_storage),
-    username: Optional[str] = Form(None),
-    email: Optional[EmailStr] = Form(None),
-    first_name: Optional[str] = Form(None),
-    last_name: Optional[str] = Form(None),
-    bio: Optional[str] = Form(None),
+    request: Request = None,
     profile_picture: Optional[UploadFile] = File(None)
 ):
     """Update current user's profile"""
     try:
-        # Create a base user data dictionary
-        user_data = {
-            "username": username,
-            "email": email,
-            "first_name": first_name,
-            "last_name": last_name,
-            "bio": bio
+        # Get the JSON body from the request
+        raw_data = await request.json()
+        
+        # Filter the raw data to only include fields that are in the UserUpdate model
+        allowed_fields = {
+            "username", "email", "first_name", "last_name", "bio"
         }
+        
+        # Create a filtered dictionary with only allowed fields
+        filtered_data = {k: v for k, v in raw_data.items() if k in allowed_fields and v is not None}
+        
+        # Create a UserUpdate object from the filtered data
+        user_update = UserUpdate(**filtered_data)
         
         # Handle profile picture upload if provided
         if profile_picture and profile_picture.filename:
@@ -143,12 +144,17 @@ async def update_user(
                 minio_client=minio_client
             )
             # Pass the file_id to the user update
-            user_data["profile_photo_id"] = file_record["file_id"]
+            user_update.profile_photo_id = file_record["file_id"]
         
-        # Create user update object
-        user_update = UserUpdate(**user_data)
+        # Update the user
         updated_user = await user_service.update_user(current_user.id, user_update)
+        
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
         return updated_user
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
