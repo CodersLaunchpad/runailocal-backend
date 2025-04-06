@@ -2,7 +2,6 @@ from typing import Optional, Dict, Any
 from bson import ObjectId
 from models.models import AppSettings, AppSettingsUpdate
 from utils.time import get_current_utc_time
-import os
 
 class SettingsRepository:
     """Repository for managing application settings"""
@@ -18,14 +17,6 @@ class SettingsRepository:
             if not settings:
                 # Create default settings if none exist
                 default_settings = AppSettings()
-                
-                # Override with environment variables if they exist
-                auto_publish_env = os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
-                auto_upload_env = os.getenv("AUTO_UPLOAD", "false").lower() == "true"
-                
-                default_settings.auto_publish_articles = auto_publish_env
-                default_settings.auto_upload = auto_upload_env
-                
                 await self.collection.insert_one(default_settings.model_dump(by_alias=True))
                 return default_settings.model_dump(by_alias=True)
             return settings
@@ -63,11 +54,6 @@ class SettingsRepository:
                 print("No settings found, creating default settings")
                 # Create default settings if none exist
                 default_settings = AppSettings()
-                
-                # Override with environment variables if they exist
-                auto_publish_env = os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
-                default_settings.auto_publish_articles = auto_publish_env
-                
                 await self.collection.insert_one(default_settings.model_dump(by_alias=True))
                 return default_settings.auto_publish_articles
             
@@ -86,11 +72,6 @@ class SettingsRepository:
             if not settings:
                 print("No settings found, creating default settings")
                 default_settings = AppSettings()
-                
-                # Override with environment variables if they exist
-                auto_upload_env = os.getenv("AUTO_UPLOAD", "false").lower() == "true"
-                default_settings.auto_upload = auto_upload_env
-                
                 await self.collection.insert_one(default_settings.model_dump(by_alias=True))
                 return default_settings.auto_upload
             

@@ -298,10 +298,10 @@ class AppSettings(BaseModel):
     """Application-wide settings"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     auto_publish_articles: bool = Field(
-        default=False
+        default=lambda: os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
     )
     auto_upload: bool = Field(
-        default=False
+        default=lambda: os.getenv("AUTO_UPLOAD", "false").lower() == "true"
     )
     updated_at: datetime = Field(default_factory=get_current_utc_time)
     updated_by: Optional[str] = None
