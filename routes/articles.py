@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Response, status, UploadFile, Request
 from typing import Any, Dict, List, Optional
 
@@ -85,7 +86,15 @@ async def update_article(
     current_user: CurrentActiveUser,
     article_service: ArticleServiceDep,
     minio_client: Minio = Depends(get_object_storage),
-    request: Request = None,
+    name: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    excerpt: Optional[str] = Form(None),
+    category_id: Optional[str] = Form(None),
+    read_time: Optional[int] = Form(None),
+    status: Optional[str] = Form(None),
+    tags: Optional[list] = Form(None),
+    is_spotlight: Optional[bool] = Form(None),
+    is_popular: Optional[bool] = Form(None),
     image: Optional[UploadFile] = File(None)
 ):
     """
@@ -93,23 +102,28 @@ async def update_article(
     Admins can edit any article while non-admins can only edit their own.
     """
     try:
-        # Get the JSON body from the request
-        raw_data = await request.json()
-        
-        # Filter the raw data to only include fields that are in the ArticleUpdate model
-        allowed_fields = {
-            "name", "slug", "content", "excerpt", "category_id", 
-            "read_time", "status", "tags", "is_spotlight", "is_popular"
+        # Create a dictionary with the form data
+        filtered_data = {
+            "name": name,
+            "content": content,
+            "excerpt": excerpt,
+            "category_id": category_id,
+            "read_time": read_time,
+            "status": status,
+            "tags": tags,
+            "is_spotlight": is_spotlight,
+            "is_popular": is_popular
         }
         
-        # Create a filtered dictionary with only allowed fields
-        filtered_data = {k: v for k, v in raw_data.items() if k in allowed_fields and v is not None}
+        # Remove None values
+        filtered_data = {k: v for k, v in filtered_data.items() if v is not None}
         
         # Create an ArticleUpdate object from the filtered data
         article_update = ArticleUpdate(**filtered_data)
         
         # Handle image upload if provided
         if image and image.filename:
+            print(f"Processing image: {image.filename}, content-type: {image.content_type}")
             # Get MongoDB collection for file metadata
             from db.db import get_db
             mongo_collection = await get_db()
@@ -164,6 +178,7 @@ async def update_article(
     except HTTPException as e:
         raise e
     except Exception as e:
+        print(f"Error in update_article: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
