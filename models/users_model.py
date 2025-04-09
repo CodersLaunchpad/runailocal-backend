@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from utils.time import get_current_utc_time
 from datetime import datetime
 from bson import ObjectId
+from db.schemas.files_schema import FileInDB
 
 class UserBase(BaseModel):
     """Base user fields shared across different user models"""
@@ -44,6 +45,7 @@ class UserResponse(UserBase):
     user_type: str
     # profile_picture_base64: str
     user_details: Dict[str, Any] = {}
+    profile_file: Optional[FileInDB] = None
     
     likes: List[str] = []
     following: List[str] = []
@@ -75,6 +77,15 @@ class UserResponse(UserBase):
                         "reading_preferences": []
                     },
                     "profile_picture_base64": "base64",
+                    "profile_file": {
+                        "file_id": "684bc35b-6217-4dcd-bf8f-1234567890",
+                        "file_type": "image/webp",
+                        "file_extension": "webp",
+                        "size": 11234,
+                        "object_name": "profile_photos/684bc35b-6217-4dcd-bf8f-1234567890.webp",
+                        "slug": "profile-username-684bc35b",
+                        "unique_string": "684bc35b"
+                    },
                     "bookmarks": ["341g1f77bcf86cd799439011"],
                     "likes": ["341g1f77bcf86cd799439011"],
                     "following": ["426h1f77bcf86cd799439011"],
@@ -99,6 +110,7 @@ async def get_author_data(db, author_id: ObjectId) -> Dict:
             "followers": 1,
             "following": 1,
             "bookmarks": 1,  # Include bookmarks field in the projection
+            "bio": 1,  # Include bio field in the projection
         }
     )
 
