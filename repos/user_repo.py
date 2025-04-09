@@ -329,6 +329,7 @@ class UserRepository:
                 "profile_picture_base64": user.get("profile_picture_base64", ""),
                 "profile_file": user.get("profile_file", ""),
                 "user_details": user.get("user_details", {}),
+                "bio": user.get("bio", ""),
                 
                 # Connection stats
                 "follower_count": follower_count,
@@ -941,6 +942,7 @@ class UserRepository:
                 "username": user.get("username", ""),
                 "first_name": user.get("first_name", ""),
                 "last_name": user.get("last_name", ""),
+                "bio": user.get("bio", ""),
                 "follower_count": follower_count,
                 "following_count": following_count,
                 "followers": followers_list,

@@ -99,6 +99,7 @@ async def get_author_data(db, author_id: ObjectId) -> Dict:
             "followers": 1,
             "following": 1,
             "bookmarks": 1,  # Include bookmarks field in the projection
+            "bio": 1,  # Include bio field in the projection
         }
     )
 
