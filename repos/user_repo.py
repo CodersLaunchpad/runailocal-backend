@@ -687,44 +687,48 @@ class UserRepository:
         except Exception as e:
             raise Exception(f"Error unfollowing author: {str(e)}")
     
-    async def get_following(self, current_user: UserInDB) -> List[UserInDB]:
+    async def get_following(self, current_user) -> List[Dict[str, Any]]:
         """
-        Get list of users that the current user follows
-        Returns list of UserInDB models
+        Get the list of users that the current user follows.
+        Returns a list of user dictionaries with basic profile information.
         """
-        following_users = []
-        
-        for author_id in current_user.following:
-            author_dict = await self.db.users.find_one({"_id": ObjectId(author_id)})
-            if author_dict:
-                # Convert ObjectId to string
-                if isinstance(author_dict.get("_id"), ObjectId):
-                    author_dict["_id"] = str(author_dict["_id"])
-                
-                # If article has a main file image, fetch the file details
-                if author_dict("profile_photo_id"):
-                    file_id = author_dict("profile_photo_id")
-                    file_dict = await self.db.files.find_one({"file_id": file_id})
-                    
-                    if file_dict:
-                        # Create file object with file details
-                        file_obj = {
-                            "file_id": file_dict.get("file_id"),
-                            "file_type": file_dict.get("file_type"),
-                            "file_extension": file_dict.get("file_extension"),
-                            "size": file_dict.get("size"),
-                            "object_name": file_dict.get("object_name"),
-                            "slug": file_dict.get("slug"),
-                            "unique_string": file_dict.get("unique_string")
-                        }
-                        author_dict["profile_file"] = file_obj
-                        author_dict["profile_picture_base64"] = "DEPRECIATED"
+        try:
+            # Get the current user's document
+            user = await self.db.users.find_one({"_id": ObjectId(str(current_user.id))})
+            if not user:
+                return []
 
-                # Convert to UserInDB model
-                author = UserInDB(**author_dict)
-                following_users.append(author)
-        
-        return following_users
+            # Get the list of user IDs that the current user follows
+            following_ids = user.get("following", [])
+            if not following_ids:
+                return []
+
+            # Convert string IDs to ObjectId
+            following_object_ids = [ObjectId(f_id) for f_id in following_ids]
+
+            # Get the users that are being followed
+            cursor = self.db.users.find({"_id": {"$in": following_object_ids}})
+            following_users = []
+            async for author in cursor:
+                # Get author's profile photo if available
+                profile_photo = None
+                if author.get("profile_photo_id"):
+                    profile_photo = await self.db.files.find_one({"file_id": author["profile_photo_id"]})
+                
+                # Create author dictionary with profile photo
+                author_dict = {
+                    "id": str(author["_id"]),
+                    "username": author.get("username", ""),
+                    "first_name": author.get("first_name", ""),
+                    "last_name": author.get("last_name", ""),
+                    "profile_photo": profile_photo
+                }
+                following_users.append(author_dict)
+
+            return following_users
+        except Exception as e:
+            print(f"Error in get_following: {str(e)}")
+            raise Exception(f"Failed to get following users: {str(e)}")
     
     async def get_user_statistics(self, user_identifier: str, current_user: Optional[UserInDB]) -> Dict[str, Any]:
         """Get comprehensive statistics for a user"""

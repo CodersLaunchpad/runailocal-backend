@@ -10,8 +10,10 @@ from models.models import ArticleStatus, clean_document, get_current_utc_time
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
 from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional, get_current_active_user
+from dependencies.user import UserServiceDep
 # from dependencies.minio import Minio
 from minio import Minio
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -517,3 +519,65 @@ async def approve_article(
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.get("/following/", response_model=List[Dict[str, Any]])
+async def get_following_articles(
+    current_user: CurrentActiveUser,
+    article_service: ArticleServiceDep,
+    user_service: UserServiceDep,
+    skip: int = 0,
+    limit: int = 20
+):
+    """
+    Get articles from users that the current user follows.
+    Returns a list of articles sorted by published date.
+    """
+    try:
+        print(f"Current user: {current_user}")
+        print(f"Current user ID: {current_user.id}")
+        
+        # Get the list of users that the current user follows
+        following_users = await user_service.get_following(current_user)
+        print(f"Following users: {following_users}")
+        
+        # Extract user IDs from the dictionaries
+        following_user_ids = [user["id"] for user in following_users]
+        print(f"Following user ids: {following_user_ids}")
+
+        if not following_user_ids:
+            print("No following users found")
+            return JSONResponse(content=[])
+
+        # Convert user IDs to ObjectId
+        following_object_ids = [ObjectId(user_id) for user_id in following_user_ids]
+        print(f"Following object ids: {following_object_ids}")
+
+        # Build the query
+        query = {
+            "author_id": {"$in": following_object_ids},
+            "status": ArticleStatus.published.value
+        }
+        print(f"Query: {query}")
+
+        # Get articles from followed users using direct query
+        articles = await article_service.article_repo.get_articles_by_query(
+            query=query,
+            sort_field="created_at",
+            limit=limit,
+            current_user=current_user
+        )
+
+        print(f"Found {len(articles)} articles")
+        if articles:
+            print(f"First article: {articles[0] if articles else 'None'}")
+
+        return JSONResponse(content=articles)
+    except Exception as e:
+        print(f"Error in get_following_articles: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred: {str(e)}"
+        )
