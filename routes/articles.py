@@ -6,12 +6,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi.responses import JSONResponse
 from db.db import get_object_storage
-from models.models import ArticleStatus, clean_document
+from models.models import ArticleStatus, clean_document, get_current_utc_time
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
 from dependencies.article import ArticleServiceDep
 from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional, get_current_active_user
+from dependencies.user import UserServiceDep
 # from dependencies.minio import Minio
 from minio import Minio
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -19,7 +21,9 @@ router = APIRouter()
 async def create_article(
     article: ArticleCreate,
     current_user: CurrentActiveUser,
-    article_service: ArticleServiceDep
+    article_service: ArticleServiceDep,
+    minio_client: Minio = Depends(get_object_storage),
+    image: Optional[UploadFile] = File(None)
 ):
     """
     Create a new article and save it to the database.
@@ -27,11 +31,93 @@ async def create_article(
     The category_id and author_id are converted from string to ObjectId.
     """
     try:
-        created_article = await article_service.create_article(article, str(current_user.id))
+        print(f"[Create Article] Starting article creation for user_id: {current_user.id}")
+        
+        # Initialize image-related fields
+        image_file = None
+        image_id = None
+        main_image_file = None
+        
+        # Handle image upload if provided
+        if image and image.filename:
+            try:
+                print(f"[Create Article] Processing image upload: {image.filename}")
+                
+                # Get MongoDB collection for file metadata
+                from db.db import get_db
+                mongo_collection = await get_db()
+                mongo_collection = mongo_collection.files
+                print(f"[Create Article] MongoDB collection retrieved: files")
+                
+                # Generate a unique file ID
+                from services.minio_service import generate_unique_file_id
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"[Create Article] Generated file_id: {file_id}")
+                
+                # Organize by user_id/article_id/files
+                folder = f"{current_user.id}/articles"
+                print(f"[Create Article] Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                from services.minio_service import upload_to_minio
+                file_data = await upload_to_minio(
+                    data=await image.read(),
+                    filename=image.filename,
+                    content_type=image.content_type,
+                    minio_client=minio_client,
+                    folder=folder
+                )
+                print(f"[Create Article] Image saved to MinIO: {file_data['object_name']}")
+                
+                # Store file metadata in MongoDB with additional user_id
+                file_data["user_id"] = str(current_user.id)
+                
+                # Save to database
+                result = await mongo_collection.insert_one(file_data)
+                print(f"[Create Article] File metadata stored in MongoDB: {result.inserted_id}")
+                
+                # Set the image-related fields
+                image_file = file_id
+                image_id = file_id
+                
+                # Create main_image_file structure
+                main_image_file = {
+                    "file_id": file_data["file_id"],
+                    "file_type": file_data["file_type"],
+                    "file_extension": file_data["file_extension"],
+                    "size": file_data["size"],
+                    "object_name": file_data["object_name"],
+                    "slug": file_data["slug"],
+                    "unique_string": file_data["file_id"].split("-")[0]  # First part of UUID
+                }
+                
+            except Exception as e:
+                print(f"[Create Article] Error processing image: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing image: {str(e)}"
+                )
+            finally:
+                await image.close()
+        else:
+            print("[Create Article] No image provided with the article")
+        
+        # Add image fields to article data
+        article_dict = article.model_dump()
+        article_dict["image_file"] = image_file
+        article_dict["image_id"] = image_id
+        article_dict["main_image_file"] = main_image_file
+        
+        # Create the article
+        created_article = await article_service.create_article(article_dict, str(current_user.id))
+        print(f"[Create Article] Article created successfully")
+        
         return created_article
     except HTTPException as e:
+        print(f"[Create Article] HTTP Exception: {str(e)}")
         raise e
     except Exception as e:
+        print(f"[Create Article] Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
@@ -95,13 +181,15 @@ async def update_article(
     tags: Optional[list] = Form(None),
     is_spotlight: Optional[bool] = Form(None),
     is_popular: Optional[bool] = Form(None),
-    image: Optional[UploadFile] = File(None)
+    image_file: Optional[UploadFile] = File(None)
 ):
     """
     Update an article.
     Admins can edit any article while non-admins can only edit their own.
     """
     try:
+        print(f"[Update Article] Starting update for article {id}")
+        
         # Create a dictionary with the form data
         filtered_data = {
             "name": name,
@@ -122,63 +210,113 @@ async def update_article(
         article_update = ArticleUpdate(**filtered_data)
         
         # Handle image upload if provided
-        if image and image.filename:
-            print(f"Processing image: {image.filename}, content-type: {image.content_type}")
-            # Get MongoDB collection for file metadata
-            from db.db import get_db
-            mongo_collection = await get_db()
-            mongo_collection = mongo_collection.files
-            
-            # Generate a unique file ID
-            from services.minio_service import generate_unique_file_id
-            file_id = await generate_unique_file_id(mongo_collection)
-            
-            # Organize by user_id/article_id/files
-            folder = f"{current_user.id}/{id}"
-            
-            # Save the image to MinIO
-            from services.minio_service import upload_to_minio
-            file_data = await upload_to_minio(
-                data=await image.read(),
-                filename=image.filename,
-                content_type=image.content_type,
-                minio_client=minio_client,
-                folder=folder
-            )
-            
-            # Store file metadata in MongoDB with additional user_id and article_id
-            file_data["user_id"] = str(current_user.id)
-            file_data["article_id"] = id
-            
-            # Save to database
-            await mongo_collection.insert_one(file_data)
-            
-            # Set the image-related fields
-            article_update.image_file = file_id
-            article_update.image_id = file_id
-            
-            # Create main_image_file structure
-            article_update.main_image_file = {
-                "file_id": file_data["file_id"],
-                "file_type": file_data["file_type"],
-                "file_extension": file_data["file_extension"],
-                "size": file_data["size"],
-                "object_name": file_data["object_name"],
-                "slug": file_data["slug"],
-                "unique_string": file_data["file_id"].split("-")[0]  # First part of UUID
-            }
+        if image_file and image_file.filename and image_file.filename is not None:
+            try:
+                print(f"[Update Article] Processing image upload: {image_file.filename}")
+                
+                # Get MongoDB collection for file metadata
+                from db.db import get_db
+                mongo_collection = await get_db()
+                mongo_collection = mongo_collection.files
+                print(f"[Update Article] MongoDB collection retrieved: files")
+                
+                # Generate a unique file ID
+                from services.minio_service import generate_unique_file_id
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"[Update Article] Generated file_id: {file_id}")
+                
+                # Organize by user_id/article_id/files
+                folder = f"{current_user.id}/{id}"
+                print(f"[Update Article] Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                from services.minio_service import upload_to_minio
+                file_data = await upload_to_minio(
+                    data=await image_file.read(),
+                    filename=image_file.filename,
+                    content_type=image_file.content_type,
+                    minio_client=minio_client,
+                    folder=folder
+                )
+                print(f"[Update Article] Image saved to MinIO: {file_data['object_name']}")
+                
+                # Store file metadata in MongoDB with additional user_id
+                file_data["user_id"] = str(current_user.id)
+                file_data["article_id"] = id
+                
+                # Generate slug for the file
+                from services.minio_service import create_slug
+                base_slug = await create_slug(os.path.splitext(image_file.filename)[0])
+                file_data["slug"] = f"{base_slug}-{file_data['unique_string']}"
+                
+                # Save to database
+                result = await mongo_collection.insert_one(file_data)
+                print(f"[Update Article] File metadata stored in MongoDB: {result.inserted_id}")
+                
+                # Set the image-related fields
+                article_update.image_file = file_id
+                article_update.image_id = file_id
+                
+                # Create main_image_file structure
+                # main_image_file = {
+                #     "file_id": file_data["file_id"],
+                #     "file_type": file_data["file_type"],
+                #     "file_extension": file_data["file_extension"],
+                #     "size": file_data["size"],
+                #     "object_name": file_data["object_name"],
+                #     "slug": file_data["slug"],
+                #     "unique_string": file_data["unique_string"]
+                # }
+                
+                # Ensure these fields are included in the update data
+                update_data = article_update.model_dump(exclude_unset=True)
+                update_data["image_file"] = file_data["file_id"]
+                update_data["image_id"] = file_data["file_id"]
+                # update_data["main_image_file"] = main_image_file
+                update_data["updated_at"] = get_current_utc_time()
+                
+                # Create a new ArticleUpdate object with the complete data
+                article_update = ArticleUpdate(**update_data)
+                
+            except Exception as e:
+                print(f"[Update Article] Error processing image: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing image: {str(e)}"
+                )
+            finally:
+                await image_file.close()
+        else:
+            print("[Update Article] No image provided with the article update")
+            # If no image update, just add the timestamp
+            update_data = article_update.model_dump(exclude_unset=True)
+            update_data["updated_at"] = get_current_utc_time()
+            article_update = ArticleUpdate(**update_data)
         
         # Update the article
-        updated_article = await article_service.update_article(id, article_update, str(current_user.id))
-        
-        if not updated_article:
-            raise HTTPException(status_code=404, detail="Article not found")
-        
-        return JSONResponse(content=updated_article)
+        try:
+            # Update the article in the database
+            updated_article = await article_service.update_article(id, article_update, str(current_user.id))
+            print(f"[Update Article] Successfully updated article in database")
+            
+            if not updated_article:
+                print(f"[Update Article] Article not found after update")
+                raise HTTPException(status_code=404, detail="Article not found")
+            
+            # Enrich the article with the new image data
+            enriched_article = await article_service.article_repo.enrich_article(updated_article)
+            print(f"[Update Article] Successfully enriched article with new image data")
+            
+            return JSONResponse(content=enriched_article)
+        except Exception as e:
+            print(f"[Update Article] Error updating article in database: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to update article: {str(e)}")
+            
     except HTTPException as e:
+        print(f"[Update Article] HTTP Exception: {str(e)}")
         raise e
     except Exception as e:
-        print(f"Error in update_article: {str(e)}")
+        print(f"[Update Article] Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
@@ -381,3 +519,65 @@ async def approve_article(
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.get("/following/", response_model=List[Dict[str, Any]])
+async def get_following_articles(
+    current_user: CurrentActiveUser,
+    article_service: ArticleServiceDep,
+    user_service: UserServiceDep,
+    skip: int = 0,
+    limit: int = 20
+):
+    """
+    Get articles from users that the current user follows.
+    Returns a list of articles sorted by published date.
+    """
+    try:
+        print(f"Current user: {current_user}")
+        print(f"Current user ID: {current_user.id}")
+        
+        # Get the list of users that the current user follows
+        following_users = await user_service.get_following(current_user)
+        print(f"Following users: {following_users}")
+        
+        # Extract user IDs from the dictionaries
+        following_user_ids = [user["id"] for user in following_users]
+        print(f"Following user ids: {following_user_ids}")
+
+        if not following_user_ids:
+            print("No following users found")
+            return JSONResponse(content=[])
+
+        # Convert user IDs to ObjectId
+        following_object_ids = [ObjectId(user_id) for user_id in following_user_ids]
+        print(f"Following object ids: {following_object_ids}")
+
+        # Build the query
+        query = {
+            "author_id": {"$in": following_object_ids},
+            "status": ArticleStatus.published.value
+        }
+        print(f"Query: {query}")
+
+        # Get articles from followed users using direct query
+        articles = await article_service.article_repo.get_articles_by_query(
+            query=query,
+            sort_field="created_at",
+            limit=limit,
+            current_user=current_user
+        )
+
+        print(f"Found {len(articles)} articles")
+        if articles:
+            print(f"First article: {articles[0] if articles else 'None'}")
+
+        return JSONResponse(content=articles)
+    except Exception as e:
+        print(f"Error in get_following_articles: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred: {str(e)}"
+        )
