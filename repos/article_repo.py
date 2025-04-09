@@ -196,6 +196,11 @@ class ArticleRepository:
                     }
                     article["main_image_file"] = file_obj
                     article["image"] = "DEPRECIATED"
+                else:
+                    # If file not found, try to get it from the article's main_image_file
+                    if article.get("main_image_file"):
+                        article["main_image_file"] = article["main_image_file"]
+                        article["image"] = "DEPRECIATED"
                 
             enriched_article = await enrich_article_data(self.db, article)
             
@@ -203,12 +208,6 @@ class ArticleRepository:
         except Exception as e:
             raise Exception(f"Error getting article by ID or slug: {str(e)}")
     
-            # Clean the document before returning
-            # return clean_document(prepare_mongo_document(article))
-            return clean_document(prepare_mongo_document(enriched_article))
-        # except Exception as e:
-        #     raise Exception(f"Error in get_article_by_id_or_slug: {str(e)}")    
-
     async def check_article_exists(self, article_id: str) -> bool:
         """
         Check if an article exists

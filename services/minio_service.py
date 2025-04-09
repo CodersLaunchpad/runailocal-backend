@@ -11,9 +11,21 @@ from db.db import get_db
 from config import settings
 from PIL import Image
 import os
+import unicodedata
 
 # Global minio client - will be initialized by get_object_storage
 minio_client = None
+
+async def generate_unique_file_id(mongo_collection) -> str:
+    """
+    Generate a unique file ID and verify it doesn't exist in the database
+    """
+    while True:
+        file_id = str(uuid.uuid4())
+        # Check if file_id already exists
+        existing_file = await mongo_collection.find_one({"file_id": file_id})
+        if not existing_file:
+            return file_id
 
 async def process_image(image_data: bytes, max_size: Tuple[int, int] = (1920, 1080), quality: int = 85) -> Tuple[bytes, str]:
     """
@@ -256,3 +268,28 @@ async def get_file_by_id(file_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Error retrieving file: {str(e)}")
         return None
+
+async def create_slug(text: str) -> str:
+    """
+    Create a URL-friendly slug from the given text.
+    
+    Args:
+        text: The text to convert to a slug
+    
+    Returns:
+        A lowercase string with spaces and special chars replaced by hyphens
+    """
+    # Normalize unicode characters
+    text = unicodedata.normalize('NFKD', str(text))
+    
+    # Replace non-alphanumeric characters with hyphens
+    text = re.sub(r'[^\w\s-]', '-', text.lower())
+    
+    # Replace whitespace with hyphens
+    text = re.sub(r'[\s]+', '-', text)
+    
+    # Replace multiple hyphens with a single hyphen
+    text = re.sub(r'[-]+', '-', text)
+    
+    # Remove leading/trailing hyphens
+    return text.strip('-')
