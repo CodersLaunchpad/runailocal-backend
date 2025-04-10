@@ -1,126 +1,65 @@
-from fastapi import APIRouter, HTTPException, Response, status, Depends
-from datetime import datetime, timezone
-from models.models import PyObjectId, MessageCreate, MessageInDB
-from db.schemas.users_schema import UserInDB
-from dependencies.auth import get_current_active_user
-from typing import List
-from pymongo import ReturnDocument
-from db.db import get_db
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from models.message_model import MessageCreate, MessageResponse, Conversation
+from services.message_service import MessageService
+from repos.message_repo import MessageRepository
+from dependencies.db import get_db
+from dependencies.auth import get_current_user
+from models.users_model import UserResponse
 
+# router = APIRouter(prefix="/messages", tags=["messages"])
 router = APIRouter()
 
-@router.post("/", response_model=MessageInDB)
+def get_message_repo(db = Depends(get_db)) -> MessageRepository:
+    return MessageRepository(db)
+
+def get_message_service(message_repo: MessageRepository = Depends(get_message_repo)) -> MessageService:
+    return MessageService(message_repo)
+
+@router.post("/", response_model=MessageResponse)
 async def send_message(
     message: MessageCreate,
-    current_user: UserInDB = Depends(get_current_active_user),
-    db = Depends(get_db)
+    current_user: UserResponse = Depends(get_current_user),
+    message_service: MessageService = Depends(get_message_service)
 ):
-    try:
-        recipient_id = PyObjectId(message.recipient_id)
-        
-        # Check if recipient exists
-        recipient = await db.users.find_one({"_id": recipient_id})
-        if not recipient:
-            raise HTTPException(status_code=404, detail="Recipient not found")
-        
-        # Create message object
-        message_obj = {
-            "sender_id": current_user.id,
-            "recipient_id": recipient_id,
-            "text": message.text,
-            "read": False,
-            "created_at": datetime.now(timezone.utc)
-        }
-        
-        # Insert message
-        result = await db.messages.insert_one(message_obj)
-        
-        # Get the created message
-        created_message = await db.messages.find_one({"_id": result.inserted_id})
-        return created_message
-    except:
-        raise HTTPException(status_code=400, detail="Invalid recipient ID")
+    """Send a new message"""
+    message.sender_id = current_user.id
+    return await message_service.send_message(message)
 
-@router.get("/", response_model=List[MessageInDB])
+@router.get("/conversations/", response_model=List[Conversation])
+async def get_conversations(
+    current_user: UserResponse = Depends(get_current_user),
+    message_service: MessageService = Depends(get_message_service)
+):
+    """Get all conversations for the current user"""
+    return await message_service.get_user_conversations(current_user.id)
+
+@router.get("/conversations/{other_user_id}", response_model=Optional[Conversation])
+async def get_conversation(
+    other_user_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+    message_service: MessageService = Depends(get_message_service)
+):
+    """Get conversation with a specific user"""
+    return await message_service.get_conversation(current_user.id, other_user_id)
+
+@router.get("/conversations/{other_user_id}/messages", response_model=List[MessageResponse])
 async def get_messages(
-    sent: bool = False,
-    current_user: UserInDB = Depends(get_current_active_user),
-    db = Depends(get_db)
+    other_user_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: UserResponse = Depends(get_current_user),
+    message_service: MessageService = Depends(get_message_service)
 ):
-    if sent:
-        query = {"sender_id": current_user.id}
-    else:
-        query = {"recipient_id": current_user.id}
-    
-    messages = []
-    cursor = db.messages.find(query).sort("created_at", -1)
-    
-    async for document in cursor:
-        messages.routerend(document)
-    
-    return messages
+    """Get messages with a specific user"""
+    return await message_service.get_messages(current_user.id, other_user_id, skip, limit)
 
-@router.get("/{message_id}", response_model=MessageInDB)
-async def get_message(
-    message_id: str,
-    current_user: UserInDB = Depends(get_current_active_user),
-    db = Depends(get_db)
+@router.post("/conversations/{other_user_id}/read")
+async def mark_messages_as_read(
+    other_user_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+    message_service: MessageService = Depends(get_message_service)
 ):
-    try:
-        object_id = PyObjectId(message_id)
-        
-        # Get the message
-        message = await db.messages.find_one({"_id": object_id})
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found")
-        
-        # Check if user is sender or recipient
-        if str(message["sender_id"]) != str(current_user.id) and str(message["recipient_id"]) != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
-            )
-        
-        # Mark as read if user is recipient
-        if str(message["recipient_id"]) == str(current_user.id) and not message.get("read"):
-            updated_message = await db.messages.find_one_and_update(
-                {"_id": object_id},
-                {"$set": {"read": True}},
-                return_document=ReturnDocument.AFTER
-            )
-            return updated_message
-        
-        return message
-    except:
-        raise HTTPException(status_code=400, detail="Invalid message ID")
-
-@router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_message(
-    message_id: str,
-    current_user: UserInDB = Depends(get_current_active_user),
-    db = Depends(get_db)
-):
-    try:
-        object_id = PyObjectId(message_id)
-        
-        # Get the message
-        message = await db.messages.find_one({"_id": object_id})
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found")
-        
-        # Check if user is sender or recipient
-        if str(message["sender_id"]) != str(current_user.id) and str(message["recipient_id"]) != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
-            )
-        
-        # Delete the message
-        delete_result = await db.messages.delete_one({"_id": object_id})
-        
-        if delete_result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Message not found")
-        
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except:
-        raise HTTPException(status_code=400, detail="Invalid message ID")
+    """Mark messages as read"""
+    await message_service.mark_messages_as_read(current_user.id, other_user_id)
+    return {"status": "success"} 
