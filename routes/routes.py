@@ -4,7 +4,7 @@ from .auth import router as auth_router
 from .articles import router as articles_router
 from .categories import router as categories_router
 from .comments import router as comments_router
-from .messages import router as messages_router
+from .messages import router as message_routes
 from .storage import router as storage_router
 from .test import router as test_router
 from .search import router as search_router
@@ -48,7 +48,7 @@ def setup_routes(app: FastAPI):
     )
 
     app.include_router(
-        messages_router,
+        message_routes,
         prefix="/messages",
         tags=["messages"],
     )
