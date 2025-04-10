@@ -9,6 +9,7 @@ from .storage import router as storage_router
 from .test import router as test_router
 from .search import router as search_router
 from .settings import router as settings_router
+from .backup import router as backup_router
 
 def setup_routes(app: FastAPI):
     # You can add other routes directly to app here if needed
@@ -75,4 +76,10 @@ def setup_routes(app: FastAPI):
         settings_router,
         prefix="/settings",
         tags=["settings"],
+    )
+
+    app.include_router(
+        backup_router,
+        prefix="/backup",
+        tags=["backup"],
     )
