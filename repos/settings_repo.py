@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any
 from bson import ObjectId
 from models.models import AppSettings, AppSettingsUpdate
 from utils.time import get_current_utc_time
+import os
 
 class SettingsRepository:
     """Repository for managing application settings"""
@@ -16,7 +17,10 @@ class SettingsRepository:
             settings = await self.collection.find_one()
             if not settings:
                 # Create default settings if none exist
-                default_settings = AppSettings()
+                default_settings = AppSettings(
+                    auto_publish_articles=os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true",
+                    auto_upload=os.getenv("AUTO_UPLOAD", "false").lower() == "true"
+                )
                 await self.collection.insert_one(default_settings.model_dump(by_alias=True))
                 return default_settings.model_dump(by_alias=True)
             return settings
