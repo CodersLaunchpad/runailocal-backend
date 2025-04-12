@@ -13,6 +13,7 @@ import asyncio
 from typing import Optional, Any
 import tempfile
 from bson import ObjectId
+from dependencies.auth import AdminUser
 
 router = APIRouter()
 
@@ -79,6 +80,7 @@ async def backup_minio(minio_client: Minio) -> bytes:
 
 @router.get("/")
 async def create_backup(
+    current_user: AdminUser,
     db = Depends(get_db),
     minio_client: Minio = Depends(get_object_storage)
 ):
@@ -146,6 +148,7 @@ async def create_backup(
 
 @router.get("/verify")
 async def verify_backup(
+    current_user: AdminUser,
     backup_file: bytes,
     expected_checksum: Optional[str] = None
 ):
