@@ -77,10 +77,11 @@ async def create_article(
                 
                 # Store file metadata in MongoDB with additional user_id
                 file_data["user_id"] = str(current_user.id)
-                
+                print(f"[Create Article] File data: {file_data}")
                 # Save to database
                 result = await mongo_collection.insert_one(file_data)
                 print(f"[Create Article] File metadata stored in MongoDB: {result.inserted_id}")
+                file_id = file_data.get("file_id")
                 
                 # Set the image-related fields
                 image_file = file_id
@@ -110,28 +111,19 @@ async def create_article(
             print("[Create Article] No image provided with the article")
         
         # Create article document
-        article_doc = {
-            "name": name,
-            "slug": slug,
-            "content": content,
-            "excerpt": excerpt,
-            "image": "DEPRECATED",
-            "read_time": read_time,
-            "category_id": ObjectId(category_id),
-            "author_id": ObjectId(current_user.id),
-            "created_at": get_current_utc_time(),
-            "updated_at": get_current_utc_time(),
-            "views": 0,
-            "likes": 0,
-            "comments": [],
-            "status": "draft",
-            "is_spotlight": False,
-            "is_popular": False,
-            "image_file": image_file,
-            "image_id": image_id,
-            "liked_by": [],
-            "bookmarked_by": []
-        }
+        article_doc = ArticleCreate(
+            name=name,
+            slug=slug,
+            content=content,
+            excerpt=excerpt,
+            read_time=read_time,
+            category_id=category_id,
+            image_file=image_file,
+            image_id=image_id,
+            status="draft",
+            is_spotlight=False,
+            is_popular=False
+        )
         
         # Create the article using the service
         created_article = await article_service.create_article(article_doc, str(current_user.id))
@@ -610,4 +602,45 @@ async def get_following_articles(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred: {str(e)}"
+        )
+
+@router.put("/{id}/status", response_model=Dict[str, Any])
+async def update_article_status(
+    id: str,
+    status: str = Form(...),
+    current_user = Depends(get_current_active_user),
+    article_service: ArticleServiceDep = None
+):
+    """
+    Update an article's status between draft and archived.
+    Only the article author can update the status.
+    """
+    try:
+        # Validate status
+        if status not in ["draft", "archived"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Status must be either 'draft' or 'archived'"
+            )
+
+        # Update the article status
+        updated_article = await article_service.update_article_status(
+            id,
+            status,
+            str(current_user.id)
+        )
+
+        if not updated_article:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Article not found or you don't have permission to update it"
+            )
+
+        return JSONResponse(content=updated_article)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating article status: {str(e)}"
         )
