@@ -4,7 +4,7 @@ from fastapi import UploadFile, HTTPException, status
 from minio import Minio
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import base64
 import re
 from db.db import get_db
@@ -134,6 +134,17 @@ async def upload_to_minio(
         )
         print(f"[MinIO Upload] Successfully uploaded to MinIO")
         
+        # Generate pre-signed URL for accessing the file
+        url = minio_client.presigned_get_object(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            expires=timedelta(hours=1)
+        )
+        print(f"[MinIO Upload] Generated pre-signed URL")
+        
+        # Create a base slug from the filename
+        base_slug = create_slug(os.path.splitext(filename)[0])
+        
         # Generate a unique string for the slug
         unique_string = file_id[:8]  # Using first 8 chars of UUID for uniqueness
         print(f"[MinIO Upload] Generated unique string: {unique_string}")
@@ -146,7 +157,10 @@ async def upload_to_minio(
             "file_extension": file_extension,
             "size": file_size,
             "object_name": object_name,
+            "url": url,
+            "slug": base_slug,
             "unique_string": unique_string,
+            "uploaded_at": datetime.now(timezone.utc)
         }
         
     except Exception as e:

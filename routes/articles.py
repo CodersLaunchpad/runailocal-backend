@@ -616,7 +616,7 @@ async def get_following_articles(
 async def update_article_status(
     id: str,
     status: str = Form(...),
-    current_user: CurrentActiveUser = Depends(get_current_active_user),
+    current_user = Depends(get_current_active_user),
     article_service: ArticleServiceDep = None
 ):
     """
