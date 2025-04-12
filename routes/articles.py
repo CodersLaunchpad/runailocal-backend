@@ -621,10 +621,10 @@ async def update_article_status(
     """
     try:
         # Validate status
-        if status not in ["draft", "archived", "published"]:
+        if status not in ["draft", "archived", "deleted"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Status must be either 'draft' or 'archived'"
+                status_code=400,
+                detail="Status must be either 'draft', 'archived', or 'deleted'"
             )
 
         # Update the article status
@@ -636,7 +636,7 @@ async def update_article_status(
 
         if not updated_article:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail="Article not found or you don't have permission to update it"
             )
 
@@ -645,6 +645,6 @@ async def update_article_status(
         raise e
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error updating article status: {str(e)}"
         )
