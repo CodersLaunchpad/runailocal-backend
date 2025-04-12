@@ -552,11 +552,17 @@ async def get_user_statistics(
                 })
         
         # Get all articles written by this user
-        article_count = await db.articles.count_documents({"user_id": user["_id"]})
+        article_count = await db.articles.count_documents({
+            "user_id": user["_id"],
+            "status": "published"
+        })
         
-        # Get article details (limited to 100) as in the original function
-        articles_cursor = db.articles.find({"user_id": user["_id"]})
-        articles = await articles_cursor.to_list(length=100)  # Limit to 100 articles
+        # Get article details as in the original function
+        articles_cursor = db.articles.find({
+            "user_id": user["_id"],
+            "status": "published"
+        })
+        articles = await articles_cursor.to_list(length=None)
         
         # Process article data
         article_list = []

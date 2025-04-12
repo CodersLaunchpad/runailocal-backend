@@ -229,10 +229,16 @@ class UserRepository:
                     })
             
             # Get article statistics
-            article_count = await self.db.articles.count_documents({"author_id": user_object_id})
+            article_count = await self.db.articles.count_documents({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             
             # Get article details
-            articles_cursor = self.db.articles.find({"user_id": user_object_id}).sort("created_at", -1)
+            articles_cursor = self.db.articles.find({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             articles = await articles_cursor.to_list(length=None)
             
             recent_articles = []
@@ -875,10 +881,16 @@ class UserRepository:
                     })
             
             # Get article statistics
-            article_count = await self.db.articles.count_documents({"user_id": user_object_id})
+            article_count = await self.db.articles.count_documents({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             
             # Get article details (limited to 100)
-            articles_cursor = self.db.articles.find({"user_id": user_object_id})
+            articles_cursor = self.db.articles.find({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             articles = await articles_cursor.to_list(length=100)
             
             # Process article data
