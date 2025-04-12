@@ -157,6 +157,10 @@ async def read_articles(
 ):
     """Get a list of articles with optional filtering"""
     try:
+        # If no status is specified, default to showing published articles
+        if article_status is None:
+            article_status = ArticleStatus.published
+            
         articles = await article_service.get_articles(
             category, author, tag, featured, article_status, skip, limit
         )
