@@ -621,7 +621,7 @@ async def update_article_status(
     """
     try:
         # Validate status
-        if status not in ["draft", "archived"]:
+        if status not in ["draft", "archived", "published"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Status must be either 'draft' or 'archived'"
