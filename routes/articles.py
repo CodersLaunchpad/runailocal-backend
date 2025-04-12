@@ -19,9 +19,14 @@ router = APIRouter()
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_article(
-    article: ArticleCreate,
-    current_user: CurrentActiveUser,
-    article_service: ArticleServiceDep,
+    name: str = Form(...),
+    slug: str = Form(...),
+    excerpt: str = Form(...),
+    content: str = Form(...),
+    category_id: str = Form(...),
+    read_time: int = Form(...),
+    current_user = Depends(get_current_active_user),
+    article_service: ArticleServiceDep = None,
     minio_client: Minio = Depends(get_object_storage),
     image: Optional[UploadFile] = File(None)
 ):
@@ -36,6 +41,7 @@ async def create_article(
         # Initialize image-related fields
         image_file = None
         image_id = None
+        image_url = None
         main_image_file = None
         
         # Handle image upload if provided
@@ -79,6 +85,7 @@ async def create_article(
                 # Set the image-related fields
                 image_file = file_id
                 image_id = file_id
+                image_url = file_data.get("url")
                 
                 # Create main_image_file structure
                 main_image_file = {
@@ -102,17 +109,40 @@ async def create_article(
         else:
             print("[Create Article] No image provided with the article")
         
-        # Add image fields to article data
-        article_dict = article.model_dump()
-        article_dict["image_file"] = image_file
-        article_dict["image_id"] = image_id
-        article_dict["main_image_file"] = main_image_file
+        # Create article document
+        article_doc = {
+            "name": name,
+            "slug": slug,
+            "content": content,
+            "excerpt": excerpt,
+            "image": "DEPRECATED",
+            "read_time": read_time,
+            "category_id": ObjectId(category_id),
+            "author_id": ObjectId(current_user.id),
+            "created_at": get_current_utc_time(),
+            "updated_at": get_current_utc_time(),
+            "views": 0,
+            "likes": 0,
+            "comments": [],
+            "status": "draft",
+            "is_spotlight": False,
+            "is_popular": False,
+            "image_file": image_file,
+            "image_id": image_id,
+            "liked_by": [],
+            "bookmarked_by": []
+        }
         
-        # Create the article
-        created_article = await article_service.create_article(article_dict, str(current_user.id))
+        # Create the article using the service
+        created_article = await article_service.create_article(article_doc, str(current_user.id))
         print(f"[Create Article] Article created successfully")
         
+        # Add the main_image_file to the response if it exists
+        if main_image_file:
+            created_article["main_image_file"] = main_image_file
+        
         return created_article
+        
     except HTTPException as e:
         print(f"[Create Article] HTTP Exception: {str(e)}")
         raise e
