@@ -352,7 +352,7 @@ class ArticleService:
 
     async def update_article_status(self, article_id: str, new_status: str, current_user_id: str) -> Dict[str, Any]:
         """
-        Update an article's status between draft and archived.
+        Update an article's status between draft and archived or deleted.
         Only the article author can update the status.
         """
         try:
@@ -367,9 +367,9 @@ class ArticleService:
 
             # Validate status transition
             current_status = article.get("status")
-            if current_status == "published" and new_status != "archived":
+            if current_status == "published" and new_status not in ["archived", "deleted"]:
                 raise ValueError(f"Cannot update status from {current_status} to {new_status}")
-            elif current_status not in ["draft", "archived"] and new_status not in ["draft", "archived"]:
+            elif current_status not in ["draft", "archived", "deleted"] and new_status not in ["draft", "archived", "deleted"]:
                 raise ValueError(f"Cannot update status from {current_status} to {new_status}")
 
             # Prepare update data
