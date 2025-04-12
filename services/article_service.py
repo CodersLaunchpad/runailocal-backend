@@ -367,8 +367,10 @@ class ArticleService:
 
             # Validate status transition
             current_status = article.get("status")
-            if current_status not in ["draft", "archived"]:
-                raise ValueError(f"Cannot update status from {current_status}")
+            if current_status == "published" and new_status != "archived":
+                raise ValueError(f"Cannot update status from {current_status} to {new_status}")
+            elif current_status not in ["draft", "archived"] and new_status not in ["draft", "archived"]:
+                raise ValueError(f"Cannot update status from {current_status} to {new_status}")
 
             # Prepare update data
             update_data = {
