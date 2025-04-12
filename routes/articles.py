@@ -19,9 +19,14 @@ router = APIRouter()
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_article(
-    article: ArticleCreate,
-    current_user: CurrentActiveUser,
-    article_service: ArticleServiceDep,
+    name: str = Form(...),
+    slug: str = Form(...),
+    excerpt: str = Form(...),
+    content: str = Form(...),
+    category_id: str = Form(...),
+    read_time: int = Form(...),
+    current_user = Depends(get_current_active_user),
+    article_service: ArticleServiceDep = None,
     minio_client: Minio = Depends(get_object_storage),
     image: Optional[UploadFile] = File(None)
 ):
@@ -36,6 +41,7 @@ async def create_article(
         # Initialize image-related fields
         image_file = None
         image_id = None
+        image_url = None
         main_image_file = None
         
         # Handle image upload if provided
@@ -71,14 +77,16 @@ async def create_article(
                 
                 # Store file metadata in MongoDB with additional user_id
                 file_data["user_id"] = str(current_user.id)
-                
+                print(f"[Create Article] File data: {file_data}")
                 # Save to database
                 result = await mongo_collection.insert_one(file_data)
                 print(f"[Create Article] File metadata stored in MongoDB: {result.inserted_id}")
+                file_id = file_data.get("file_id")
                 
                 # Set the image-related fields
                 image_file = file_id
                 image_id = file_id
+                image_url = file_data.get("url")
                 
                 # Create main_image_file structure
                 main_image_file = {
@@ -102,17 +110,31 @@ async def create_article(
         else:
             print("[Create Article] No image provided with the article")
         
-        # Add image fields to article data
-        article_dict = article.model_dump()
-        article_dict["image_file"] = image_file
-        article_dict["image_id"] = image_id
-        article_dict["main_image_file"] = main_image_file
+        # Create article document
+        article_doc = ArticleCreate(
+            name=name,
+            slug=slug,
+            content=content,
+            excerpt=excerpt,
+            read_time=read_time,
+            category_id=category_id,
+            image_file=image_file,
+            image_id=image_id,
+            status="draft",
+            is_spotlight=False,
+            is_popular=False
+        )
         
-        # Create the article
-        created_article = await article_service.create_article(article_dict, str(current_user.id))
+        # Create the article using the service
+        created_article = await article_service.create_article(article_doc, str(current_user.id))
         print(f"[Create Article] Article created successfully")
         
+        # Add the main_image_file to the response if it exists
+        if main_image_file:
+            created_article["main_image_file"] = main_image_file
+        
         return created_article
+        
     except HTTPException as e:
         print(f"[Create Article] HTTP Exception: {str(e)}")
         raise e
@@ -135,6 +157,10 @@ async def read_articles(
 ):
     """Get a list of articles with optional filtering"""
     try:
+        # If no status is specified, default to showing published articles
+        if article_status is None:
+            article_status = ArticleStatus.published
+            
         articles = await article_service.get_articles(
             category, author, tag, featured, article_status, skip, limit
         )
@@ -580,4 +606,45 @@ async def get_following_articles(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred: {str(e)}"
+        )
+
+@router.put("/{id}/status", response_model=Dict[str, Any])
+async def update_article_status(
+    id: str,
+    status: str = Form(...),
+    current_user = Depends(get_current_active_user),
+    article_service: ArticleServiceDep = None
+):
+    """
+    Update an article's status between draft and archived.
+    Only the article author can update the status.
+    """
+    try:
+        # Validate status
+        if status not in ["draft", "archived", "published"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Status must be either 'draft' or 'archived'"
+            )
+
+        # Update the article status
+        updated_article = await article_service.update_article_status(
+            id,
+            status,
+            str(current_user.id)
+        )
+
+        if not updated_article:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Article not found or you don't have permission to update it"
+            )
+
+        return JSONResponse(content=updated_article)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating article status: {str(e)}"
         )

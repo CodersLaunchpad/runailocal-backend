@@ -15,6 +15,9 @@ class ArticleBase(BaseModel):
     image: Optional[str] = None
     read_time: int
     status: str = "draft" # TODO: make it an enum
+    image_file: Optional[str] = None
+    image_id: Optional[str] = None
+    # main_image_file: Optional[Dict[str, Any]] = None
 
 class ArticleCreate(ArticleBase):
     """Model for creating a new article"""
