@@ -143,7 +143,7 @@ async def upload_to_minio(
         print(f"[MinIO Upload] Generated pre-signed URL")
         
         # Create a base slug from the filename
-        base_slug = create_slug(os.path.splitext(filename)[0])
+        base_slug = await create_slug(os.path.splitext(filename)[0])
         
         # Generate a unique string for the slug
         unique_string = file_id[:8]  # Using first 8 chars of UUID for uniqueness

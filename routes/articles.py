@@ -77,10 +77,11 @@ async def create_article(
                 
                 # Store file metadata in MongoDB with additional user_id
                 file_data["user_id"] = str(current_user.id)
-                
+                print(f"[Create Article] File data: {file_data}")
                 # Save to database
                 result = await mongo_collection.insert_one(file_data)
                 print(f"[Create Article] File metadata stored in MongoDB: {result.inserted_id}")
+                file_id = file_data.get("file_id")
                 
                 # Set the image-related fields
                 image_file = file_id
@@ -110,28 +111,19 @@ async def create_article(
             print("[Create Article] No image provided with the article")
         
         # Create article document
-        article_doc = {
-            "name": name,
-            "slug": slug,
-            "content": content,
-            "excerpt": excerpt,
-            "image": "DEPRECATED",
-            "read_time": read_time,
-            "category_id": ObjectId(category_id),
-            "author_id": ObjectId(current_user.id),
-            "created_at": get_current_utc_time(),
-            "updated_at": get_current_utc_time(),
-            "views": 0,
-            "likes": 0,
-            "comments": [],
-            "status": "draft",
-            "is_spotlight": False,
-            "is_popular": False,
-            "image_file": image_file,
-            "image_id": image_id,
-            "liked_by": [],
-            "bookmarked_by": []
-        }
+        article_doc = ArticleCreate(
+            name=name,
+            slug=slug,
+            content=content,
+            excerpt=excerpt,
+            read_time=read_time,
+            category_id=category_id,
+            image_file=image_file,
+            image_id=image_id,
+            status="draft",
+            is_spotlight=False,
+            is_popular=False
+        )
         
         # Create the article using the service
         created_article = await article_service.create_article(article_doc, str(current_user.id))
