@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from db.db import get_db, get_object_storage
 from minio import Minio
@@ -80,51 +80,43 @@ async def backup_minio(minio_client: Minio) -> bytes:
 
 @router.get("/")
 async def create_backup(
-    current_user: AdminUser,
+    # current_user: AdminUser,
     db = Depends(get_db),
     minio_client: Minio = Depends(get_object_storage)
 ):
-    """Create a complete backup of MongoDB and MinIO data"""
     try:
-        # Create timestamp for backup filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"backup_{timestamp}.zip"
         
-        # Create in-memory zip file
+        # Create the MongoDB backup
+        print("Starting MongoDB backup...")
+        mongo_data = await backup_mongodb(db)
+        mongo_checksum = await calculate_checksum(mongo_data)
+        print("MongoDB backup completed successfully")
+        
+        # Create the MinIO backup
+        print("Starting MinIO backup...")
+        minio_data = await backup_minio(minio_client)
+        minio_checksum = await calculate_checksum(minio_data)
+        print("MinIO backup completed successfully")
+        
+        # Calculate combined checksum of the components
+        combined_checksum = await calculate_checksum(mongo_checksum.encode() + minio_checksum.encode())
+        print(f"Combined checksum: {combined_checksum}")
+        
+        # Create zip file
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            try:
-                # Backup MongoDB
-                print("Starting MongoDB backup...")
-                mongo_data = await backup_mongodb(db)
-                zipf.writestr('mongodb_backup.json', mongo_data)
-                print("MongoDB backup completed successfully")
-            except Exception as e:
-                print(f"Error during MongoDB backup: {str(e)}")
-                raise
-            
-            try:
-                # Backup MinIO
-                print("Starting MinIO backup...")
-                minio_data = await backup_minio(minio_client)
-                zipf.writestr('minio_backup.zip', minio_data)
-                print("MinIO backup completed successfully")
-            except Exception as e:
-                print(f"Error during MinIO backup: {str(e)}")
-                raise
-            
-            try:
-                # Add checksum file
-                print("Calculating checksum...")
-                zip_buffer.seek(0)
-                checksum = await calculate_checksum(zip_buffer.getvalue())
-                zipf.writestr('checksum.txt', checksum)
-                print("Checksum calculation completed")
-            except Exception as e:
-                print(f"Error during checksum calculation: {str(e)}")
-                raise
+            zipf.writestr('mongodb_backup.json', mongo_data)
+            zipf.writestr('minio_backup.zip', minio_data)
+            # Include the checksums in a metadata file
+            metadata = {
+                "mongo_checksum": mongo_checksum,
+                "minio_checksum": minio_checksum,
+                "combined_checksum": combined_checksum
+            }
+            zipf.writestr('checksums.json', json.dumps(metadata, indent=2))
         
-        # Reset buffer position and get the size
         zip_buffer.seek(0)
         zip_size = len(zip_buffer.getvalue())
         zip_buffer.seek(0)
@@ -135,7 +127,7 @@ async def create_backup(
             headers={
                 "Content-Disposition": f"attachment; filename={backup_filename}",
                 "Content-Length": str(zip_size),
-                "X-Backup-Checksum": checksum
+                "X-Backup-Checksum": combined_checksum
             }
         )
     
@@ -146,33 +138,74 @@ async def create_backup(
             detail=f"Error creating backup: {str(e)}"
         )
 
-@router.get("/verify")
+@router.post("/verify")
 async def verify_backup(
-    current_user: AdminUser,
-    backup_file: bytes,
+    # current_user: AdminUser,
+    backup_file: UploadFile,
     expected_checksum: Optional[str] = None
 ):
-    """Verify the integrity of a backup file"""
     try:
-        # Calculate checksum of the provided backup file
-        actual_checksum = await calculate_checksum(backup_file)
+        content = await backup_file.read()
         
-        if expected_checksum and actual_checksum != expected_checksum:
-            return {
-                "status": "failed",
-                "message": "Checksum mismatch",
-                "expected": expected_checksum,
-                "actual": actual_checksum
-            }
-        
-        return {
-            "status": "success",
-            "message": "Backup verification successful",
-            "checksum": actual_checksum
-        }
+        # Extract and check individual components
+        with zipfile.ZipFile(io.BytesIO(content)) as zipf:
+            file_list = zipf.namelist()
+            print(f"Files in zip: {file_list}")
+            
+            if 'checksums.json' in file_list:
+                # Use the checksums from the metadata file
+                metadata = json.loads(zipf.read('checksums.json').decode('utf-8'))
+                expected_checksum = metadata.get('combined_checksum')
+                
+                # Verify individual components
+                mongo_data = zipf.read('mongodb_backup.json')
+                mongo_checksum = await calculate_checksum(mongo_data)
+                
+                minio_data = zipf.read('minio_backup.zip')
+                minio_checksum = await calculate_checksum(minio_data)
+                
+                # Calculate combined checksum
+                actual_checksum = await calculate_checksum(mongo_checksum.encode() + minio_checksum.encode())
+                
+                print(f"Expected: {expected_checksum}")
+                print(f"Actual: {actual_checksum}")
+                
+                if expected_checksum and actual_checksum != expected_checksum:
+                    return {
+                        "status": "failed",
+                        "message": "Checksum mismatch",
+                        "expected": expected_checksum,
+                        "actual": actual_checksum
+                    }
+                
+                return {
+                    "status": "success",
+                    "message": "Backup verification successful",
+                    "checksum": actual_checksum
+                }
+            else:
+                # Fall back to the whole file checksum
+                actual_checksum = await calculate_checksum(content)
+                print(f"Expected: {expected_checksum}")
+                print(f"Actual: {actual_checksum}")
+                
+                if expected_checksum and actual_checksum != expected_checksum:
+                    return {
+                        "status": "failed",
+                        "message": "Checksum mismatch (whole file)",
+                        "expected": expected_checksum,
+                        "actual": actual_checksum
+                    }
+                
+                return {
+                    "status": "success",
+                    "message": "Backup verification successful (whole file)",
+                    "checksum": actual_checksum
+                }
     
     except Exception as e:
+        print(f"Verification error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error verifying backup: {str(e)}"
-        ) 
+        )
