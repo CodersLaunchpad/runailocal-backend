@@ -611,3 +611,44 @@ async def get_following_articles(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred: {str(e)}"
         )
+
+@router.put("/{id}/status", response_model=Dict[str, Any])
+async def update_article_status(
+    id: str,
+    status: str = Form(...),
+    current_user: CurrentActiveUser = Depends(get_current_active_user),
+    article_service: ArticleServiceDep = None
+):
+    """
+    Update an article's status between draft and archived.
+    Only the article author can update the status.
+    """
+    try:
+        # Validate status
+        if status not in ["draft", "archived"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Status must be either 'draft' or 'archived'"
+            )
+
+        # Update the article status
+        updated_article = await article_service.update_article_status(
+            id,
+            status,
+            str(current_user.id)
+        )
+
+        if not updated_article:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Article not found or you don't have permission to update it"
+            )
+
+        return JSONResponse(content=updated_article)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating article status: {str(e)}"
+        )

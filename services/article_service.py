@@ -349,3 +349,42 @@ class ArticleService:
             
         except Exception as e:
             raise e        
+
+    async def update_article_status(self, article_id: str, new_status: str, current_user_id: str) -> Dict[str, Any]:
+        """
+        Update an article's status between draft and archived.
+        Only the article author can update the status.
+        """
+        try:
+            # Get the article
+            article = await self.article_repo.get_article_by_id(article_id)
+            if not article:
+                return None
+
+            # Check if user is the author
+            if str(article.get("author_id")) != current_user_id:
+                return None
+
+            # Validate status transition
+            current_status = article.get("status")
+            if current_status not in ["draft", "archived"]:
+                raise ValueError(f"Cannot update status from {current_status}")
+
+            # Prepare update data
+            update_data = {
+                "status": new_status,
+                "updated_at": get_current_utc_time()
+            }
+
+            # Update the article
+            updated_article = await self.article_repo.update_article(article_id, update_data)
+            if not updated_article:
+                return None
+
+            # Enrich and return
+            return await self.article_repo.enrich_article(updated_article)
+
+        except ValueError as e:
+            raise ValueError(str(e))
+        except Exception as e:
+            raise Exception(f"Error updating article status: {str(e)}")        
