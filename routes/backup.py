@@ -439,6 +439,7 @@ async def verify_backup(
             existing_backup = await get_backup_by_mongo_checksum(db, checksums.get("mongo_checksum", ""))
             
             if existing_backup and existing_backup.get("combined_checksum") == checksums.get("combined_checksum"):
+                # No need to create a new record, just return success
                 return {
                     "status": "success",
                     "message": "Backup verification successful (using fast verification)",
@@ -452,19 +453,22 @@ async def verify_backup(
         with zipfile.ZipFile(io.BytesIO(full_content)) as zipf:
             verification_result = await verify_zip_contents(zipf, checksums)
             
-            # If verification successful, store for future quick verification
+            # Only store new backup info if this is a new backup (not found in quick verify)
             if verification_result["status"] == "success":
                 _, absolute_path, relative_path = generate_backup_paths()
                 
-                background_tasks.add_task(
-                    store_backup_info,
-                    db, 
-                    checksums.get("mongo_checksum", ""), 
-                    checksums.get("minio_checksum", ""), 
-                    verification_result["checksum"],
-                    relative_path,
-                    absolute_path
-                )
+                # Double check we don't already have this backup
+                existing_backup = await get_backup_by_mongo_checksum(db, checksums.get("mongo_checksum", ""))
+                if not existing_backup or existing_backup.get("combined_checksum") != checksums.get("combined_checksum"):
+                    background_tasks.add_task(
+                        store_backup_info,
+                        db, 
+                        checksums.get("mongo_checksum", ""), 
+                        checksums.get("minio_checksum", ""), 
+                        verification_result["checksum"],
+                        relative_path,
+                        absolute_path
+                    )
             
             return verification_result
     
