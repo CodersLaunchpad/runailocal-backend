@@ -56,8 +56,8 @@ def generate_backup_paths(timestamp: Optional[str] = None) -> Tuple[str, str, st
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     backup_filename = f"backup_{timestamp}.zip"
-    absolute_path = os.path.join(settings.BACKUP_DIR, backup_filename).replace('\\', '/')
     relative_path = backup_filename.replace('\\', '/')
+    absolute_path = os.path.abspath(os.path.join(settings.BACKUP_DIR, backup_filename)).replace('\\', '/')
     
     return backup_filename, absolute_path, relative_path
 
@@ -71,7 +71,7 @@ def resolve_backup_path(stored_path: str) -> Tuple[str, str]:
         
     # Convert stored path to absolute path if it's relative
     if not os.path.isabs(stored_path):
-        absolute_path = os.path.join(settings.BACKUP_DIR, stored_path)
+        absolute_path = os.path.abspath(os.path.join(settings.BACKUP_DIR, stored_path))
     else:
         absolute_path = stored_path
     
@@ -104,15 +104,16 @@ async def get_backup_by_mongo_checksum(db, mongo_checksum: str) -> Optional[Dict
     except Exception as e:
         return None
 
-async def store_backup_info(db, mongo_checksum: str, minio_checksum: str, combined_checksum: str, backup_path: str) -> None:
-    """Store backup checksums and path in the database for future reference"""
+async def store_backup_info(db, mongo_checksum: str, minio_checksum: str, combined_checksum: str, backup_path: str, absolute_path: str) -> None:
+    """Store backup checksums and paths in the database for future reference"""
     try:
         await db.backups.insert_one({
             "timestamp": datetime.now(),
             "mongo_checksum": mongo_checksum,
             "minio_checksum": minio_checksum, 
             "combined_checksum": combined_checksum,
-            "backup_path": backup_path
+            "backup_path": backup_path,
+            "absolute_path": absolute_path
         })
         print(f"Stored backup info: {mongo_checksum[:8]}..., {minio_checksum[:8]}...")
     except Exception as e:
@@ -353,9 +354,9 @@ async def create_backup(
         with open(absolute_path, 'wb') as f:
             f.write(zip_buffer.getvalue())
         
-        # Store new backup info with relative path
+        # Store new backup info with relative path and absolute path
         background_tasks.add_task(
-            store_backup_info, db, mongo_checksum, minio_checksum, combined_checksum, relative_path
+            store_backup_info, db, mongo_checksum, minio_checksum, combined_checksum, relative_path, absolute_path
         )
         
         return StreamingResponse(
@@ -453,7 +454,7 @@ async def verify_backup(
             
             # If verification successful, store for future quick verification
             if verification_result["status"] == "success":
-                _, _, relative_path = generate_backup_paths()
+                _, absolute_path, relative_path = generate_backup_paths()
                 
                 background_tasks.add_task(
                     store_backup_info,
@@ -461,7 +462,8 @@ async def verify_backup(
                     checksums.get("mongo_checksum", ""), 
                     checksums.get("minio_checksum", ""), 
                     verification_result["checksum"],
-                    relative_path
+                    relative_path,
+                    absolute_path
                 )
             
             return verification_result
