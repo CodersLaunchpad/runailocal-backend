@@ -41,7 +41,9 @@ class Settings:
         "MINIO_USERNAME": (None, str),
         "MINIO_PASSWORD": (None, str),
         "MINIO_SERVER": (None, str),
-        "MINIO_BUCKET": (None, str)
+        "MINIO_BUCKET": (None, str),
+        # Backup settings
+        "BACKUP_DIR": ("backups", str)
     }
     
     def __init__(self):
