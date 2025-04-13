@@ -41,7 +41,9 @@ class Settings:
         "MINIO_USERNAME": (None, str),
         "MINIO_PASSWORD": (None, str),
         "MINIO_SERVER": (None, str),
-        "MINIO_BUCKET": (None, str)
+        "MINIO_BUCKET": (None, str),
+        # Backup settings
+        "BACKUP_DIR": ("backups", str)
     }
     
     def __init__(self):
@@ -51,36 +53,45 @@ class Settings:
     def _load_config(self):
         # Check for required environment variables
         missing_vars = []
+        for var in self.REQUIRED_CONFIGS:
+            if not os.getenv(var):
+                missing_vars.append(var)
         
-        for key, (default_value, expected_type) in self.CONFIG_DEFAULTS.items():
-            # Get raw value from environment or use default
-            env_value = os.getenv(key)
-            
-            if env_value is None:
-                # Use default if no environment variable is set
-                value = default_value
-                # If value is None and it's in required configs, add to missing list
-                if value is None and key in self.REQUIRED_CONFIGS:
-                    missing_vars.append(key)
-                    continue
-            else:
-                # Convert environment value to expected type
-                try:
-                    if expected_type == bool:
-                        # Special handling for boolean values
-                        value = env_value.lower() in ('true', 'yes', '1', 't', 'y')
-                    else:
-                        # Use the specified type constructor
-                        value = expected_type(env_value)
-                except (ValueError, TypeError) as e:
-                    raise ConfigError(f"Invalid value for {key}: {env_value} - expected {expected_type.__name__} - {e}")
-            
-            # Store the converted value
-            self.values[key] = value
-        
-        # If any required variables are missing, raise an error
         if missing_vars:
             raise ConfigError(f"Missing required environment variables: {', '.join(missing_vars)}")
+        
+        # Load all config values with type conversion
+        for key, (default_value, type_) in self.CONFIG_DEFAULTS.items():
+            value = os.getenv(key)
+            
+            # Special handling for BACKUP_DIR to ensure it ends with 'backups'
+            if key == "BACKUP_DIR":
+                if value:
+                    # If custom path provided, ensure it ends with 'backups'
+                    value = value.replace('\\', '/')  # Normalize path separators
+                    value = value.rstrip('/')  # Remove trailing slashes
+                    if not value.endswith('/backups'):
+                        value = f"{value}/backups"
+                else:
+                    # Default to 'backups' in project root
+                    value = "backups"
+                self.values[key] = value
+                continue
+            
+            # Handle other config values normally
+            if value is None:
+                if default_value is None:
+                    raise ConfigError(f"Missing required config value: {key}")
+                self.values[key] = default_value
+            else:
+                try:
+                    # Convert string value to expected type
+                    if type_ == bool:
+                        self.values[key] = value.lower() in ('true', '1', 'yes')
+                    else:
+                        self.values[key] = type_(value)
+                except ValueError as e:
+                    raise ConfigError(f"Invalid value for {key}: {str(e)}")
     
     def __getattr__(self, name):
         if name in self.values:
