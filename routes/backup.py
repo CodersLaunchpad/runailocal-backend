@@ -104,7 +104,7 @@ async def get_backup_by_mongo_checksum(db, mongo_checksum: str) -> Optional[Dict
     except Exception as e:
         return None
 
-async def store_backup_info(db, mongo_checksum: str, minio_checksum: str, combined_checksum: str, backup_path: str, absolute_path: str) -> None:
+async def store_backup_info(db, mongo_checksum: str, minio_checksum: str, combined_checksum: str, relative_path: str, absolute_path: str) -> None:
     """Store backup checksums and paths in the database for future reference"""
     try:
         await db.backups.insert_one({
@@ -112,7 +112,7 @@ async def store_backup_info(db, mongo_checksum: str, minio_checksum: str, combin
             "mongo_checksum": mongo_checksum,
             "minio_checksum": minio_checksum, 
             "combined_checksum": combined_checksum,
-            "backup_path": backup_path,
+            "relative_path": relative_path,
             "absolute_path": absolute_path
         })
         print(f"Stored backup info: {mongo_checksum[:8]}..., {minio_checksum[:8]}...")
@@ -319,7 +319,7 @@ async def create_backup(
         # Check if MongoDB has changed
         if last_backup and mongo_checksum == last_backup.get("mongo_checksum"):
             # MongoDB hasn't changed, use the previous backup
-            stored_path = last_backup.get("backup_path")
+            stored_path = last_backup.get("relative_path")
             absolute_path, backup_filename = resolve_backup_path(stored_path)
             
             if absolute_path and os.path.exists(absolute_path):
