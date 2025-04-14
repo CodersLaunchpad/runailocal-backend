@@ -2,6 +2,8 @@ from typing import Dict, List, Optional, Any
 from utils.time import get_current_utc_time 
 from models.models import ArticleStatus, ensure_object_id
 from db.schemas.articles_schema import ArticleCreate, ArticleUpdate
+import re
+import unicodedata
 
 from repos.article_repo import ArticleRepository
 from repos.user_repo import UserRepository
@@ -26,6 +28,35 @@ class ArticleService:
         self.category_repo = category_repository
         self.settings_repo = settings_repository
     
+    async def generate_article_slug(self, title: str) -> str:
+        """
+        Generate a unique slug from the article title.
+        Checks against existing article slugs and appends a number if needed.
+        """
+        # Normalize unicode characters
+        text = unicodedata.normalize('NFKD', str(title))
+        
+        # Replace non-alphanumeric characters with hyphens
+        text = re.sub(r'[^\w\s-]', '-', text.lower())
+        
+        # Replace whitespace with hyphens
+        text = re.sub(r'[\s]+', '-', text)
+        
+        # Replace multiple hyphens with a single hyphen
+        text = re.sub(r'[-]+', '-', text)
+        
+        # Remove leading/trailing hyphens
+        base_slug = text.strip('-')
+        
+        # Check if slug exists and append number until unique
+        slug = base_slug
+        counter = 1
+        while await self.article_repo.get_article_by_slug(slug):
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+            
+        return slug
+    
     async def create_article(self, article_data: ArticleCreate, author_id: str) -> Dict[str, Any]:
         """
         Create a new article and return the created article.
@@ -36,8 +67,11 @@ class ArticleService:
             await self.category_repo.validate_category(article_data.category_id)
             await self.user_repo.validate_user(author_id)
             
-            # Prepare article document
+            # Generate unique slug from title
             article_dict = article_data.model_dump(exclude={"category_id", "author_id"})
+            article_dict["slug"] = await self.generate_article_slug(article_dict["name"])
+            
+            # Prepare article document
             article_dict["category_id"] = ensure_object_id(article_data.category_id)
             article_dict["author_id"] = ensure_object_id(author_id)
             
