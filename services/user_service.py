@@ -38,7 +38,7 @@ class UserService:
         
         # Initialize profile photo variables
         profile_photo_id = getattr(user, 'profile_photo_id', None)
-        
+
         # If no profile photo was uploaded, generate an avatar
         if not profile_photo_id:
             # Get MinIO client
@@ -66,6 +66,7 @@ class UserService:
         
         # Store the profile photo ID in a consistent field
         user_dict["profile_picture_file"] = profile_photo_id
+        user_dict["profile_photo_id"] = profile_photo_id
         
         # Set user details based on type
         if user.user_type == "normal":
