@@ -198,6 +198,8 @@ class ArticleStatus(str, Enum):
     published = "published"
     rejected = "rejected"
     pending = "pending"
+    archived = "archived"
+    deleted = "deleted"
 
 class ArticleBase(BaseModel):
     name: str

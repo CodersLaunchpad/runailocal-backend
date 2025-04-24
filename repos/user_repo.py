@@ -229,10 +229,16 @@ class UserRepository:
                     })
             
             # Get article statistics
-            article_count = await self.db.articles.count_documents({"author_id": user_object_id})
+            article_count = await self.db.articles.count_documents({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             
             # Get article details
-            articles_cursor = self.db.articles.find({"user_id": user_object_id}).sort("created_at", -1)
+            articles_cursor = self.db.articles.find({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             articles = await articles_cursor.to_list(length=None)
             
             recent_articles = []
@@ -329,6 +335,7 @@ class UserRepository:
                 "profile_picture_base64": user.get("profile_picture_base64", ""),
                 "profile_file": user.get("profile_file", ""),
                 "user_details": user.get("user_details", {}),
+                "bio": user.get("bio", ""),
                 
                 # Connection stats
                 "follower_count": follower_count,
@@ -874,10 +881,16 @@ class UserRepository:
                     })
             
             # Get article statistics
-            article_count = await self.db.articles.count_documents({"user_id": user_object_id})
+            article_count = await self.db.articles.count_documents({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             
             # Get article details (limited to 100)
-            articles_cursor = self.db.articles.find({"user_id": user_object_id})
+            articles_cursor = self.db.articles.find({
+                "author_id": user_object_id,
+                "status": "published"
+            })
             articles = await articles_cursor.to_list(length=100)
             
             # Process article data
@@ -945,6 +958,7 @@ class UserRepository:
                 "username": user.get("username", ""),
                 "first_name": user.get("first_name", ""),
                 "last_name": user.get("last_name", ""),
+                "bio": user.get("bio", ""),
                 "follower_count": follower_count,
                 "following_count": following_count,
                 "followers": followers_list,
