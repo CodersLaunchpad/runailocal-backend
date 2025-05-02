@@ -4,16 +4,28 @@ from fastapi import UploadFile, HTTPException, status
 from minio import Minio
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import base64
 import re
 from db.db import get_db
 from config import settings
 from PIL import Image
 import os
+import unicodedata
 
 # Global minio client - will be initialized by get_object_storage
 minio_client = None
+
+async def generate_unique_file_id(mongo_collection) -> str:
+    """
+    Generate a unique file ID and verify it doesn't exist in the database
+    """
+    while True:
+        file_id = str(uuid.uuid4())
+        # Check if file_id already exists
+        existing_file = await mongo_collection.find_one({"file_id": file_id})
+        if not existing_file:
+            return file_id
 
 async def process_image(image_data: bytes, max_size: Tuple[int, int] = (1920, 1080), quality: int = 85) -> Tuple[bytes, str]:
     """
@@ -122,6 +134,17 @@ async def upload_to_minio(
         )
         print(f"[MinIO Upload] Successfully uploaded to MinIO")
         
+        # Generate pre-signed URL for accessing the file
+        url = minio_client.presigned_get_object(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            expires=timedelta(hours=1)
+        )
+        print(f"[MinIO Upload] Generated pre-signed URL")
+        
+        # Create a base slug from the filename
+        base_slug = await create_slug(os.path.splitext(filename)[0])
+        
         # Generate a unique string for the slug
         unique_string = file_id[:8]  # Using first 8 chars of UUID for uniqueness
         print(f"[MinIO Upload] Generated unique string: {unique_string}")
@@ -134,7 +157,10 @@ async def upload_to_minio(
             "file_extension": file_extension,
             "size": file_size,
             "object_name": object_name,
+            "url": url,
+            "slug": base_slug,
             "unique_string": unique_string,
+            "uploaded_at": datetime.now(timezone.utc)
         }
         
     except Exception as e:
@@ -256,3 +282,28 @@ async def get_file_by_id(file_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Error retrieving file: {str(e)}")
         return None
+
+async def create_slug(text: str) -> str:
+    """
+    Create a URL-friendly slug from the given text.
+    
+    Args:
+        text: The text to convert to a slug
+    
+    Returns:
+        A lowercase string with spaces and special chars replaced by hyphens
+    """
+    # Normalize unicode characters
+    text = unicodedata.normalize('NFKD', str(text))
+    
+    # Replace non-alphanumeric characters with hyphens
+    text = re.sub(r'[^\w\s-]', '-', text.lower())
+    
+    # Replace whitespace with hyphens
+    text = re.sub(r'[\s]+', '-', text)
+    
+    # Replace multiple hyphens with a single hyphen
+    text = re.sub(r'[-]+', '-', text)
+    
+    # Remove leading/trailing hyphens
+    return text.strip('-')

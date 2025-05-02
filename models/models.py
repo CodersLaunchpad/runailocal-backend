@@ -198,6 +198,8 @@ class ArticleStatus(str, Enum):
     published = "published"
     rejected = "rejected"
     pending = "pending"
+    archived = "archived"
+    deleted = "deleted"
 
 class ArticleBase(BaseModel):
     name: str
@@ -298,10 +300,12 @@ class AppSettings(BaseModel):
     """Application-wide settings"""
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     auto_publish_articles: bool = Field(
-        default_factory=lambda: os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
+        # default=lambda: os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true"
+        default=False
     )
     auto_upload: bool = Field(
-        default_factory=lambda: os.getenv("AUTO_UPLOAD", "false").lower() == "true"
+        # default=lambda: os.getenv("AUTO_UPLOAD", "false").lower() == "true"
+        default=False
     )
     updated_at: datetime = Field(default_factory=get_current_utc_time)
     updated_by: Optional[str] = None

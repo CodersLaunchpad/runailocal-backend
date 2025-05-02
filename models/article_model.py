@@ -42,10 +42,16 @@ async def enrich_article_data(db, article: Dict) -> Dict:
         if "author_id" in article and article["author_id"]:
             print(f"Found author_id: {article['author_id']}")
             try:
-                author_data = await get_author_data(db, article["author_id"])
+                # Convert author_id to ObjectId if it's a string
+                author_id = article["author_id"]
+                if isinstance(author_id, str):
+                    author_id = ObjectId(author_id)
+                author_data = await get_author_data(db, author_id)
                 print(f"Retrieved author data: {author_data}")
             except Exception as e:
                 print(f"Error retrieving author data: {str(e)}")
+                print(f"Author ID that caused the error: {article['author_id']}")
+                print(f"Author ID type: {type(article['author_id'])}")
                 author_data = None
         else:
             print("No author_id found in article")

@@ -12,6 +12,7 @@ from minio import Minio
 from pydantic import EmailStr
 from db.db import get_object_storage
 from dependencies.user import UserServiceDep, get_user_service
+from models.models import get_current_utc_time
 
 from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
@@ -115,36 +116,112 @@ async def update_user(
     current_user: CurrentActiveUser,
     user_service: UserService = Depends(get_user_service),
     minio_client: Minio = Depends(get_object_storage),
-    request: Request = None,
+    username: Optional[str] = Form(None),
+    email: Optional[EmailStr] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
+    date_of_birth: Optional[str] = Form(None),
     profile_picture: Optional[UploadFile] = File(None)
 ):
     """Update current user's profile"""
     try:
-        # Get the JSON body from the request
-        raw_data = await request.json()
-        
-        # Filter the raw data to only include fields that are in the UserUpdate model
-        allowed_fields = {
-            "username", "email", "first_name", "last_name", "bio"
+        # Create a dictionary with the form data
+        filtered_data = {
+            "username": username,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "bio": bio,
+            "date_of_birth": date_of_birth
         }
         
-        # Create a filtered dictionary with only allowed fields
-        filtered_data = {k: v for k, v in raw_data.items() if k in allowed_fields and v is not None}
+        # Remove None values
+        filtered_data = {k: v for k, v in filtered_data.items() if v is not None}
         
         # Create a UserUpdate object from the filtered data
         user_update = UserUpdate(**filtered_data)
         
         # Handle profile picture upload if provided
-        if profile_picture and profile_picture.filename:
-            # Upload to MinIO and create file record
-            from services.minio_service import upload_profile_picture
-            file_record = await upload_profile_picture(
-                profile_picture=profile_picture,
-                username=current_user.username,
-                minio_client=minio_client
-            )
-            # Pass the file_id to the user update
-            user_update.profile_photo_id = file_record["file_id"]
+        if profile_picture and profile_picture.filename and profile_picture.filename is not None:
+            try:
+                print(f"[Update User] Processing profile picture upload: {profile_picture.filename}")
+                
+                # Get MongoDB collection for file metadata
+                from db.db import get_db
+                mongo_collection = await get_db()
+                mongo_collection = mongo_collection.files
+                print(f"[Update User] MongoDB collection retrieved: files")
+                
+                # Generate a unique file ID
+                from services.minio_service import generate_unique_file_id
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"[Update User] Generated file_id: {file_id}")
+                
+                # Organize by user_id/profile/files
+                folder = f"{current_user.id}/profile"
+                print(f"[Update User] Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                from services.minio_service import upload_to_minio
+                file_data = await upload_to_minio(
+                    data=await profile_picture.read(),
+                    filename=profile_picture.filename,
+                    content_type=profile_picture.content_type,
+                    minio_client=minio_client,
+                    folder=folder
+                )
+                print(f"[Update User] Image saved to MinIO: {file_data['object_name']}")
+                
+                # Store file metadata in MongoDB with additional user_id
+                file_data["user_id"] = str(current_user.id)
+                
+                # Generate slug for the file
+                from services.minio_service import create_slug
+                base_slug = await create_slug(os.path.splitext(profile_picture.filename)[0])
+                file_data["slug"] = f"{base_slug}-{file_data['unique_string']}"
+                
+                # Save to database
+                result = await mongo_collection.insert_one(file_data)
+                print(f"[Update User] File metadata stored in MongoDB: {result.inserted_id}")
+                
+                # Set the profile picture fields
+                user_update.profile_photo_id = file_data["file_id"]
+                
+                # Create profile_picture_file structure
+                profile_picture_file = {
+                    "file_id": file_data["file_id"],
+                    "file_type": file_data["file_type"],
+                    "file_extension": file_data["file_extension"],
+                    "size": file_data["size"],
+                    "object_name": file_data["object_name"],
+                    "slug": file_data["slug"],
+                    "unique_string": file_data["unique_string"]
+                }
+                
+                # Ensure these fields are included in the update data
+                update_data = user_update.model_dump(exclude_unset=True)
+                update_data["profile_photo_id"] = file_data["file_id"]
+                update_data["profile_picture_file"] = profile_picture_file
+                update_data["updated_at"] = get_current_utc_time()
+                
+                # Create a new UserUpdate object with the complete data
+                user_update = UserUpdate(**update_data)
+                
+            except Exception as e:
+                print(f"[Update User] Error processing profile picture: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing profile picture: {str(e)}"
+                )
+            finally:
+                await profile_picture.close()
+        else:
+            print("[Update User] No profile picture provided with the update")
+            # If no profile picture update, just add the timestamp
+            update_data = user_update.model_dump(exclude_unset=True)
+            update_data["updated_at"] = get_current_utc_time()
+            user_update = UserUpdate(**update_data)
         
         # Update the user
         updated_user = await user_service.update_user(current_user.id, user_update)
@@ -185,18 +262,129 @@ async def get_all_users(current_user: AdminUser, user_service: UserServiceDep):
 @router.put("/{user_id}", response_model=UserResponse)
 async def admin_update_user(
     user_id: str,
-    user_update: UserUpdate,
     current_user: AdminUser,
-    user_service: UserServiceDep
+    user_service: UserService = Depends(get_user_service),
+    minio_client: Minio = Depends(get_object_storage),
+    username: Optional[str] = Form(None),
+    email: Optional[EmailStr] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
+    date_of_birth: Optional[str] = Form(None),
+    profile_picture: Optional[UploadFile] = File(None)
 ):
     """Admin update for any user"""
     try:
+        # Create a dictionary with the form data
+        filtered_data = {
+            "username": username,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "bio": bio,
+            "date_of_birth": date_of_birth
+        }
+        
+        # Remove None values
+        filtered_data = {k: v for k, v in filtered_data.items() if v is not None}
+        
+        # Create a UserUpdate object from the filtered data
+        user_update = UserUpdate(**filtered_data)
+        
+        # Handle profile picture upload if provided
+        if profile_picture and profile_picture.filename and profile_picture.filename is not None:
+            try:
+                print(f"[Admin Update User] Processing profile picture upload: {profile_picture.filename}")
+                
+                # Get MongoDB collection for file metadata
+                from db.db import get_db
+                mongo_collection = await get_db()
+                mongo_collection = mongo_collection.files
+                print(f"[Admin Update User] MongoDB collection retrieved: files")
+                
+                # Generate a unique file ID
+                from services.minio_service import generate_unique_file_id
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"[Admin Update User] Generated file_id: {file_id}")
+                
+                # Organize by user_id/profile/files
+                folder = f"{user_id}/profile"
+                print(f"[Admin Update User] Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                from services.minio_service import upload_to_minio
+                file_data = await upload_to_minio(
+                    data=await profile_picture.read(),
+                    filename=profile_picture.filename,
+                    content_type=profile_picture.content_type,
+                    minio_client=minio_client,
+                    folder=folder
+                )
+                print(f"[Admin Update User] Image saved to MinIO: {file_data['object_name']}")
+                
+                # Store file metadata in MongoDB with additional user_id
+                file_data["user_id"] = str(user_id)
+                
+                # Generate slug for the file
+                from services.minio_service import create_slug
+                base_slug = await create_slug(os.path.splitext(profile_picture.filename)[0])
+                file_data["slug"] = f"{base_slug}-{file_data['unique_string']}"
+                
+                # Save to database
+                result = await mongo_collection.insert_one(file_data)
+                print(f"[Admin Update User] File metadata stored in MongoDB: {result.inserted_id}")
+                
+                # Set the profile picture fields
+                user_update.profile_photo_id = file_data["file_id"]
+                
+                # Create profile_picture_file structure
+                profile_picture_file = {
+                    "file_id": file_data["file_id"],
+                    "file_type": file_data["file_type"],
+                    "file_extension": file_data["file_extension"],
+                    "size": file_data["size"],
+                    "object_name": file_data["object_name"],
+                    "slug": file_data["slug"],
+                    "unique_string": file_data["unique_string"]
+                }
+                
+                # Ensure these fields are included in the update data
+                update_data = user_update.model_dump(exclude_unset=True)
+                update_data["profile_photo_id"] = file_data["file_id"]
+                update_data["profile_picture_file"] = profile_picture_file
+                update_data["updated_at"] = get_current_utc_time()
+                
+                # Create a new UserUpdate object with the complete data
+                user_update = UserUpdate(**update_data)
+                
+            except Exception as e:
+                print(f"[Admin Update User] Error processing profile picture: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing profile picture: {str(e)}"
+                )
+            finally:
+                await profile_picture.close()
+        else:
+            print("[Admin Update User] No profile picture provided with the update")
+            # If no profile picture update, just add the timestamp
+            update_data = user_update.model_dump(exclude_unset=True)
+            update_data["updated_at"] = get_current_utc_time()
+            user_update = UserUpdate(**update_data)
+        
+        # Update the user
         updated_user = await user_service.update_user(user_id, user_update)
+        
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found")
+        
         return updated_user
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid user ID")
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
@@ -364,11 +552,17 @@ async def get_user_statistics(
                 })
         
         # Get all articles written by this user
-        article_count = await db.articles.count_documents({"user_id": user["_id"]})
+        article_count = await db.articles.count_documents({
+            "user_id": user["_id"],
+            "status": "published"
+        })
         
-        # Get article details (limited to 100) as in the original function
-        articles_cursor = db.articles.find({"user_id": user["_id"]})
-        articles = await articles_cursor.to_list(length=100)  # Limit to 100 articles
+        # Get article details as in the original function
+        articles_cursor = db.articles.find({
+            "user_id": user["_id"],
+            "status": "published"
+        })
+        articles = await articles_cursor.to_list(length=None)
         
         # Process article data
         article_list = []
