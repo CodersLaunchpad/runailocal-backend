@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 from bson import ObjectId
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import random
 import lorem
 import argparse
@@ -29,6 +29,7 @@ db = client[MONGODB_DB]
 articles_collection = db['articles']
 comments_collection = db['comments']
 users_collection = db['users']
+notifications_collection = db['notifications']
 
 def clean_existing_comments():
     """Remove all existing comments and clear comment references from articles"""
@@ -173,11 +174,76 @@ def verify_comment_links():
     else:
         print(f"WARNING: {invalid_parent_refs} comments have invalid parent references")
 
+def initialize_notifications_collection():
+    """Ensure notifications collection exists with proper indexes"""
+    if 'notifications' not in db.list_collection_names():
+        db.create_collection('notifications')
+        print("Created notifications collection")
+    
+    # Create indexes
+    notifications_collection.create_index([("recipient_id", 1), ("is_read", 1)])
+    notifications_collection.create_index([("created_at", -1)])
+    print("Created notifications indexes")
+
+def clean_existing_data(collections=None):
+    """Remove all existing data from specified collections"""
+    if collections is None:
+        collections = [comments_collection, notifications_collection]
+    
+    for collection in collections:
+        count = collection.count_documents({})
+        result = collection.delete_many({})
+        print(f"Deleted {result.deleted_count} of {count} documents from {collection.name}")
+
+def generate_sample_notifications():
+    """Generate realistic notification data"""
+    users = list(users_collection.find())
+    articles = list(articles_collection.find())
+    
+    if not users or not articles:
+        print("Need both users and articles to generate notifications")
+        return
+    
+    notification_types = ['article_post', 'follow']
+    
+    for i in range(len(users) * 3):  # ~3 notifications per user
+        recipient = random.choice(users)
+        sender = random.choice([u for u in users if u['_id'] != recipient['_id']])
+        
+        notif_type = random.choice(notification_types)
+        
+        if notif_type == 'article_post':
+            article = random.choice(articles)
+            source_id = article['_id']
+            message = "commented on your article"
+        else:
+            source_id = sender['_id']
+            message = f"{sender['username']} started following you"
+        
+        notification = {
+            "recipient_id": recipient['_id'],
+            "sender_id": sender['_id'],
+            "sender_username": sender['username'],
+            "notification_type": notif_type,
+            "source_id": source_id,
+            "message": message,
+            "is_read": random.random() < 0.3,  # 30% chance of being read
+            "created_at": datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30)),
+            "read_at": datetime.now(timezone.utc) if random.random() < 0.3 else None
+        }
+        
+        notifications_collection.insert_one(notification)
+    
+    print(f"Generated {notifications_collection.count_documents({})} notifications")
+
+
 if __name__ == "__main__":
     # Set up command line arguments
     parser = argparse.ArgumentParser(description='Generate test comments for MongoDB articles')
     parser.add_argument('--clean', action='store_true', 
                         help='Remove all existing comments before generating new ones')
+    parser.add_argument('--notifications', action='store_true',
+                       help='Generate sample notifications')
     args = parser.parse_args()
     
     print(f"Connected to MongoDB at {MONGODB_URI}, using database {MONGODB_DB}")
@@ -189,3 +255,25 @@ if __name__ == "__main__":
     print("Verifying comment links...")
     verify_comment_links()
     print("Comment generation complete!")
+    print(f"Connected to MongoDB at {MONGODB_URI}, using database {MONGODB_DB}")
+    
+    # Initialize collections
+    initialize_notifications_collection()
+    
+    if args.clean:
+        clean_existing_data()
+    
+    if args.notifications or not args.clean:
+        print("Generating sample notifications...")
+        generate_sample_notifications()
+    
+    # Keep existing comment generation logic
+    print("Starting comment generation process...")
+    generate_test_comments(clean_first=args.clean)
+    print("Verifying comment links...")
+    verify_comment_links()
+    
+    print("\nData generation complete!")
+    print(f"- Articles: {articles_collection.count_documents({})}")
+    print(f"- Comments: {comments_collection.count_documents({})}")
+    print(f"- Notifications: {notifications_collection.count_documents({})}")
