@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from dependencies.auth import CurrentActiveUser, AdminUser, OptionalUser, get_current_user_optional, get_current_active_user
 from fastapi.responses import Response, StreamingResponse
 from fastapi.requests import Request
 from minio import Minio
 from db.db import get_object_storage, get_db
 import io
 from config import settings
+import os
 
 router = APIRouter()
 
@@ -114,16 +117,106 @@ async def get_image(bucket_name: str, object_name: str, minio_client: Minio = De
 
 
 # Add a new route to upload an image
-@router.post("/images/{bucket_name}/{object_name}")
-async def upload_image(bucket_name: str, object_name: str, request: Request, minio_client: Minio = Depends(get_object_storage)):
+# @router.post("/images/{bucket_name}/{object_name}")
+@router.post("/images/upload")
+async def upload_image(
+    # bucket_name: str,
+    # object_name: str, 
+    # request: Request, 
+    # minio_client: Minio = Depends(get_object_storage),
+    current_user = Depends(get_current_active_user),
+    minio_client: Minio = Depends(get_object_storage),
+    image: Optional[UploadFile] = File(None)
+    ):
     try:
         # Read the image data from the request
-        data = await request.body()
+        # data = await request.body()
         
-        # Upload the image to MinIO
-        minio_client.put_object(bucket_name, object_name, io.BytesIO(data), len(data))
+        # # Upload the image to MinIO
+        # minio_client.put_object(bucket_name, object_name, io.BytesIO(data), len(data))
+        print(f"[Create Article] current_user: {current_user}")
+        if image and image.filename:
+            try:
+                print(f"[Create Article] Processing image upload: {image.filename}")
+                
+                # Get MongoDB collection for file metadata
+                from db.db import get_db
+                mongo_collection = await get_db()
+                mongo_collection = mongo_collection.files
+                print(f"[Create Article] MongoDB collection retrieved: files")
+                
+                # Generate a unique file ID
+                from services.minio_service import generate_unique_file_id, create_slug
+                file_id = await generate_unique_file_id(mongo_collection)
+                print(f"[Create Article] Generated file_id: {file_id}")
+                
+                # Organize by user_id/article_id/files
+                # folder = f"{current_user.id}/articles"
+                folder = f"articles/media/{current_user.id}"
+                print(f"[Create Article] Storage folder path: {folder}")
+                
+                # Save the image to MinIO
+                from services.minio_service import upload_to_minio
+                file_data = await upload_to_minio(
+                    data=await image.read(),
+                    filename=image.filename,
+                    content_type=image.content_type,
+                    minio_client=minio_client,
+                    folder=folder
+                )
+                print(f"[Create Article] Image saved to MinIO: {file_data['object_name']}")
+
+                 # Generate base slug from filename
+                base_slug = await create_slug(os.path.splitext(image.filename)[0])
+                
+                # Check if slug exists and append number until unique
+                slug = base_slug
+                counter = 1
+                while await mongo_collection.find_one({"slug": slug}):
+                    slug = f"{base_slug}-{file_data['file_id'][:8]}-{counter}"
+                    counter += 1
+                
+                # Update the slug in file_data
+                file_data["slug"] = slug
+                
+                # Store file metadata in MongoDB with additional user_id
+                file_data["user_id"] = str(current_user.id)
+                print(f"[Create Article] File data: {file_data}")
+                # Save to database
+                result = await mongo_collection.insert_one(file_data)
+                print(f"[Create Article] File metadata stored in MongoDB: {result.inserted_id}")
+                file_id = file_data.get("file_id")
+                
+                # Set the image-related fields
+                image_file = file_id
+                image_id = file_id
+                image_url = file_data.get("url")
+                
+                # Create main_image_file structure
+                main_image_file = {
+                    "file_id": file_data["file_id"],
+                    "file_type": file_data["file_type"],
+                    "file_extension": file_data["file_extension"],
+                    "size": file_data["size"],
+                    "object_name": file_data["object_name"],
+                    "slug": file_data["slug"],
+                    "unique_string": file_data["file_id"].split("-")[0]  # First part of UUID
+                }
+                
+            except Exception as e:
+                print(f"[Create Article] Error processing image: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing image: {str(e)}"
+                )
+            finally:
+                await image.close()
+
+        else:
+            print("[Create Article] No image provided with the article")
+
         
-        return {"message": "Image uploaded successfully"}
+        return main_image_file
     
     except Exception as e:
         raise HTTPException(
