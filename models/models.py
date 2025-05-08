@@ -307,6 +307,14 @@ class AppSettings(BaseModel):
         # default=lambda: os.getenv("AUTO_UPLOAD", "false").lower() == "true"
         default=False
     )
+    dev_mode: bool = Field(
+        default=False,
+        description="When enabled, all emails will be forwarded to dev_mode_email"
+    )
+    dev_mode_email: Optional[str] = Field(
+        default=None,
+        description="Email address to receive all emails when dev_mode is enabled"
+    )
     updated_at: datetime = Field(default_factory=get_current_utc_time)
     updated_by: Optional[str] = None
 
@@ -318,6 +326,8 @@ class AppSettings(BaseModel):
             "example": {
                 "auto_publish_articles": False,
                 "auto_upload": False,
+                "dev_mode": False,
+                "dev_mode_email": "dev@example.com",
                 "updated_at": "2024-03-25T12:00:00Z",
                 "updated_by": "admin_user_id"
             }
@@ -327,6 +337,8 @@ class AppSettingsUpdate(BaseModel):
     """Model for updating application settings"""
     auto_publish_articles: Optional[bool] = None
     auto_upload: Optional[bool] = None
+    dev_mode: Optional[bool] = None
+    dev_mode_email: Optional[str] = None
 
     class Config:
         json_encoders = {ObjectId: str}

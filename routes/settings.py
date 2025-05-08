@@ -1,48 +1,45 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
-from dependencies.auth import AdminUser
-from models.models import AppSettingsUpdate
 from dependencies.settings import SettingsRepositoryDep
+from models.models import AppSettings, AppSettingsUpdate
+from repos.settings_repo import SettingsRepository
+from dependencies.db import DB
+from db.db import get_db
+from dependencies.auth import AdminUser, get_current_user
 
 router = APIRouter()
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/settings", response_model=Dict[str, Any])
 async def get_settings(
-    current_user: AdminUser,
-    settings_repo: SettingsRepositoryDep
+    db = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get current application settings (admin only)"""
+    """Get current application settings"""
     try:
+        settings_repo = SettingsRepository(db)
         settings = await settings_repo.get_settings()
         return settings
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
-
-@router.put("/", response_model=Dict[str, Any])
-async def update_settings(
-    settings_data: AppSettingsUpdate,
-    current_user: AdminUser,
-    settings_repo: SettingsRepositoryDep
-):
-    """Update application settings (admin only)"""
-    try:
-        updated_settings = await settings_repo.update_settings(
-            settings_data,
-            str(current_user.id)
-        )
-        return updated_settings
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+@router.put("/settings", response_model=Dict[str, Any])
+async def update_settings(
+    settings_update: AppSettingsUpdate,
+    db = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update application settings"""
+    try:
+        settings_repo = SettingsRepository(db)
+        updated_settings = await settings_repo.update_settings(settings_update)
+        return updated_settings
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
+            detail=str(e)
         )
 
 @router.put("/auto-publish", response_model=Dict[str, Any])
