@@ -34,8 +34,12 @@ async def startup_db_client():
     # Initialize settings repository and check settings
     db = await get_db()
     settings_repo = SettingsRepository(db)
-    settings = await settings_repo.get_settings()
-    logger.info(f"Current application settings: {settings}")
+    try:
+        settings = await settings_repo.initialize_settings_from_env()
+        logger.info(f"Initialized application settings: {settings}")
+    except Exception as e:
+        logger.error(f"Failed to initialize settings: {str(e)}")
+        raise
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
