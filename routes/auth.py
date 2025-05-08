@@ -123,7 +123,14 @@ async def reset_password(
             )
             
         # Check if code is less than 15 minutes old
-        code_age = datetime.now(timezone.utc) - reset_code["created_at"]
+        current_time = datetime.now(timezone.utc)
+        code_created_at = reset_code["created_at"]
+        
+        # Ensure code_created_at is timezone-aware
+        if code_created_at.tzinfo is None:
+            code_created_at = code_created_at.replace(tzinfo=timezone.utc)
+            
+        code_age = current_time - code_created_at
         if code_age > timedelta(minutes=15):
             # Deactivate expired code
             await db.password_reset_codes.update_one(

@@ -1,6 +1,9 @@
+import asyncio
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate
 from typing import Optional
 from config import (
     SMTP_HOST,
@@ -21,7 +24,8 @@ class EmailService:
         to_email: str,
         subject: str,
         body: str,
-        html_body: Optional[str] = None
+        html_body: Optional[str] = None,
+        sender_name: Optional[str] = None
     ) -> bool:
         """
         Send an email using SMTP
@@ -31,7 +35,8 @@ class EmailService:
             subject: Email subject
             body: Plain text email body
             html_body: Optional HTML email body
-            
+            sender_name: Optional sender name
+                
         Returns:
             bool: True if email was sent successfully, False otherwise
         """
@@ -43,8 +48,15 @@ class EmailService:
             
             # Create message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = SMTP_FROM_EMAIL
+            
+            # Set sender name if provided
+            if sender_name:
+                from_header = f"{sender_name} <{SMTP_FROM_EMAIL}>"
+                msg['From'] = from_header
+            else:
+                msg['From'] = SMTP_FROM_EMAIL
+                
+            msg['Date'] = formatdate(localtime=True)
             
             # Handle dev mode
             if settings.get('dev_mode') and settings.get('dev_mode_email'):
@@ -55,6 +67,7 @@ class EmailService:
                 print(f"[DEV MODE] Redirecting email to {dev_email} (originally for {to_email})")
             else:
                 msg['To'] = to_email
+                msg['Subject'] = subject
             
             # Attach plain text body
             msg.attach(MIMEText(body, 'plain'))
@@ -63,20 +76,32 @@ class EmailService:
             if html_body:
                 msg.attach(MIMEText(html_body, 'html'))
             
-            # Connect to SMTP server
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-                if SMTP_TLS:
-                    server.starttls()
-                
-                # Login to SMTP server
-                server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                
-                # Send email
-                server.send_message(msg)
-                print(f"Email sent successfully to {to_email}")
-                
-            return True
+            def send_sync():
+                try:
+                    context = ssl.create_default_context()
+                    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                        server.starttls(context=context)  # Start TLS encryption
+                        server.login(SMTP_USERNAME, SMTP_PASSWORD)  # Log in to the server
+                        server.sendmail(SMTP_FROM_EMAIL, to_email, msg.as_string())  # Send the email
+                        print(f"Email sent successfully to {to_email}")
+                        return True
+                except smtplib.SMTPAuthenticationError as auth_error:
+                    print(f"SMTP Authentication failed: {str(auth_error)}")
+                    return False
+                except smtplib.SMTPRecipientsRefused as e:
+                    print(f"Failed to send email: Recipients refused - {str(e)}")
+                    return False
+                except smtplib.SMTPException as e:
+                    print(f"Failed to send email: SMTP error - {str(e)}")
+                    return False
+                except Exception as e:
+                    print(f"Error in send_sync: {str(e)}")
+                    return False
             
+            # Run the synchronous function in a thread pool to prevent blocking
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, send_sync)
+                
         except Exception as e:
             print(f"Error sending email: {str(e)}")
             return False
