@@ -20,7 +20,12 @@ class Settings:
         "MINIO_USERNAME",
         "MINIO_PASSWORD",
         "MINIO_SERVER",
-        "MINIO_BUCKET"
+        "MINIO_BUCKET",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_FROM_EMAIL"
     ]
     
     # Define config with default values and types (None means required with no default)
@@ -43,7 +48,14 @@ class Settings:
         "MINIO_SERVER": (None, str),
         "MINIO_BUCKET": (None, str),
         # Backup settings
-        "BACKUP_DIR": ("backups", str)
+        "BACKUP_DIR": ("backups", str),
+        # Email settings
+        "SMTP_HOST": (None, str),
+        "SMTP_PORT": (587, int),
+        "SMTP_USERNAME": (None, str),
+        "SMTP_PASSWORD": (None, str),
+        "SMTP_FROM_EMAIL": (None, str),
+        "SMTP_TLS": (True, bool)
     }
     
     def __init__(self):
@@ -127,6 +139,14 @@ try:
     MINIO_PASSWORD = settings.MINIO_PASSWORD
     MINIO_SERVER = settings.MINIO_SERVER
     MINIO_BUCKET = settings.MINIO_BUCKET
+    
+    # Email Settings
+    SMTP_HOST = settings.SMTP_HOST
+    SMTP_PORT = settings.SMTP_PORT
+    SMTP_USERNAME = settings.SMTP_USERNAME
+    SMTP_PASSWORD = settings.SMTP_PASSWORD
+    SMTP_FROM_EMAIL = settings.SMTP_FROM_EMAIL
+    SMTP_TLS = settings.SMTP_TLS
     
 except ConfigError as e:
     # Print error and exit

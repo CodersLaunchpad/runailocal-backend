@@ -19,7 +19,9 @@ class SettingsRepository:
                 # Create default settings if none exist
                 default_settings = AppSettings(
                     auto_publish_articles=os.getenv("AUTO_PUBLISH_ARTICLES", "false").lower() == "true",
-                    auto_upload=os.getenv("AUTO_UPLOAD", "false").lower() == "true"
+                    auto_upload=os.getenv("AUTO_UPLOAD", "false").lower() == "true",
+                    dev_mode=os.getenv("DEV_MODE", "false").lower() == "true",
+                    dev_mode_email=os.getenv("DEV_MODE_EMAIL")
                 )
                 await self.collection.insert_one(default_settings.model_dump(by_alias=True))
                 return default_settings.model_dump(by_alias=True)
@@ -28,27 +30,31 @@ class SettingsRepository:
             print(f"Error in get_settings: {str(e)}")
             raise Exception(f"Failed to get settings: {str(e)}")
     
-    async def update_settings(self, settings_data: AppSettingsUpdate, updated_by: str) -> Dict[str, Any]:
+    async def update_settings(self, settings_update: AppSettingsUpdate) -> Dict[str, Any]:
         """Update application settings"""
-        # Convert update model to dict and remove None values
-        update_data = {k: v for k, v in settings_data.model_dump().items() if v is not None}
-        
-        if not update_data:
-            raise ValueError("No valid settings to update")
+        try:
+            update_data = settings_update.model_dump(exclude_unset=True)
+            update_data["updated_at"] = get_current_utc_time()
             
-        update_data["updated_at"] = get_current_utc_time()
-        update_data["updated_by"] = updated_by
-        
-        # Update or insert settings
-        result = await self.collection.update_one(
-            {},
-            {"$set": update_data},
-            upsert=True
-        )
-        
-        # Get updated settings
-        updated_settings = await self.get_settings()
-        return updated_settings
+            result = await self.collection.update_one(
+                {},
+                {"$set": update_data},
+                upsert=True
+            )
+            
+            if result.modified_count == 0 and not result.upserted_id:
+                raise Exception("Failed to update settings")
+            
+            # Get updated settings
+            updated_settings = await self.get_settings()
+            if not updated_settings:
+                raise Exception("Failed to retrieve updated settings")
+            
+            return updated_settings
+            
+        except Exception as e:
+            print(f"Error in update_settings: {str(e)}")
+            raise Exception(f"Failed to update settings: {str(e)}")
     
     async def get_auto_publish_setting(self) -> bool:
         """Get the auto-publish articles setting"""
