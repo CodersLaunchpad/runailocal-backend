@@ -4,6 +4,7 @@ from utils.time import get_current_utc_time
 from datetime import datetime
 from bson import ObjectId
 from db.schemas.files_schema import FileInDB
+from models.enums import SubscriptionTier
 
 class UserBase(BaseModel):
     """Base user fields shared across different user models"""
@@ -17,6 +18,7 @@ class UserCreate(UserBase):
     """Model for creating a new user"""    
     password: str
     user_type: str = "normal"  # "normal", "author", "admin" # TODO: make enums
+    subscription_tier: SubscriptionTier = SubscriptionTier.FREE
     region: Optional[str] = None
     profile_picture: Optional[str] = None
     profile_picture_initials: Optional[str] = None
@@ -38,11 +40,13 @@ class UserUpdate(BaseModel):
     bio: Optional[str] = None  # Allow updating bio
     user_details: Optional[Dict[str, Any]] = None
     profile_photo_id: Optional[str] = None  # Field to store the MinIO file ID
+    subscription_tier: Optional[SubscriptionTier] = None
 
 class UserResponse(UserBase):
     """Model for returning user information to clients"""
     id: str
     user_type: str
+    subscription_tier: SubscriptionTier = SubscriptionTier.FREE
     # profile_picture_base64: str
     user_details: Dict[str, Any] = {}
     profile_file: Optional[FileInDB] = None

@@ -11,6 +11,10 @@ from .search import router as search_router
 from .settings import router as settings_router
 from .backup import router as backup_router
 
+# Phase 1: Behavior Tracking and Content Quality Routes
+from .behavior_routes import router as behavior_router
+from .content_quality_routes import router as content_quality_router
+
 def setup_routes(app: FastAPI):
     # You can add other routes directly to app here if needed
     @app.get("/")
@@ -82,4 +86,17 @@ def setup_routes(app: FastAPI):
         backup_router,
         prefix="/backup",
         tags=["backup"],
+    )
+
+    # Phase 1: Behavior Tracking and Content Quality Routes
+    app.include_router(
+        behavior_router,
+        prefix="/api",
+        tags=["behavior"],
+    )
+
+    app.include_router(
+        content_quality_router,
+        prefix="/api",
+        tags=["content-quality"],
     )

@@ -7,6 +7,9 @@ from routes.routes import setup_routes
 from logger.logger import logger
 from repos.settings_repo import SettingsRepository
 
+# Phase 1: Behavior Tracking and Content Quality
+from middleware.behavior_middleware import BehaviorTrackingMiddleware
+
 # Try to import config - if any required configs are missing, 
 # the app will exit before starting
 try:
@@ -19,6 +22,9 @@ except Exception as e:
 
 # Initialize FastAPI app
 app = FastAPI(title="Content Management System API")
+
+# Add Phase 1 Middleware - Behavior Tracking
+app.add_middleware(BehaviorTrackingMiddleware, track_anonymous=False)
 
 # Setup routes
 setup_routes(app)
