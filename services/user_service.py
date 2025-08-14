@@ -76,13 +76,19 @@ class UserService:
                 "email_notifications": True,
                 "reading_preferences": []
             }
+            # Initialize bio and social media links for normal users
+            user_dict["bio"] = user.bio or ""
+            user_dict["social_media_links"] = user.social_media_links or []
         elif user.user_type == "author":
             user_dict["user_details"] = {
                 "type": "author",
-                "bio": "",
+                "bio": user.bio or "",
                 "slug": user.username.lower().replace(" ", "-"),
                 "articles_count": 0
             }
+            # Initialize bio and social media links for authors
+            user_dict["bio"] = user.bio or ""
+            user_dict["social_media_links"] = user.social_media_links or []
         elif user.user_type == "admin":
             # Only existing admins can create new admins, otherwise default to normal user
             user_dict["user_details"] = {
@@ -90,6 +96,9 @@ class UserService:
                 "signup_date": datetime.now(timezone.utc),
                 "email_notifications": True
             }
+            # Initialize bio and social media links for admin users
+            user_dict["bio"] = user.bio or ""
+            user_dict["social_media_links"] = user.social_media_links or []
         
         # Initialize empty collections
         user_dict["likes"] = []

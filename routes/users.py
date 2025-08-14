@@ -4,6 +4,7 @@ import os
 import random
 from bson import ObjectId
 from fastapi import APIRouter, Body, File, Form, HTTPException, Response, UploadFile, status, Depends, Request
+from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -12,11 +13,9 @@ from minio import Minio
 from pydantic import EmailStr
 from db.db import get_object_storage
 from dependencies.user import UserServiceDep, get_user_service
-from models.models import get_current_utc_time
-
-from fastapi.responses import JSONResponse
 from models.models import ArticleInDB, clean_document, ensure_object_id
-from models.users_model import UserCreate, UserUpdate
+from utils.time import get_current_utc_time
+from models.users_model import UserCreate, UserUpdate, SocialMediaLink
 from mappers.users_mapper import UserResponse
 from dependencies.auth import OptionalUser, AdminUser, CurrentActiveUser, get_current_active_user
 from services import minio_service
@@ -33,7 +32,9 @@ async def create_user(
     password: str = Form(...),
     user_type: Optional[str] = Form("normal"),
     region: Optional[str] = Form(None),
-    date_of_birth: str = Form(...),
+    date_of_birth: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
+    social_media_links: Optional[str] = Form(None),
     profile_picture_initials: Optional[str] = Form(None),
     profile_picture: Optional[UploadFile] = File(None),
     user_service: UserService = Depends(get_user_service),
@@ -41,6 +42,42 @@ async def create_user(
 ):
     """Create a new user and return the user details"""
     try:
+        # Parse social media links if provided
+        parsed_social_links = None
+        if social_media_links:
+            try:
+                import json
+                
+                # Parse the JSON string
+                social_links_data = json.loads(social_media_links)
+                
+                # Convert to SocialMediaLink objects
+                if isinstance(social_links_data, list):
+                    parsed_social_links = []
+                    for link_data in social_links_data:
+                        if isinstance(link_data, dict) and 'label' in link_data and 'icon' in link_data and 'url' in link_data:
+                            parsed_social_links.append(SocialMediaLink(**link_data))
+                        else:
+                            raise ValueError("Each social media link must have label, icon, and url fields")
+                else:
+                    raise ValueError("Social media links must be a list")
+                    
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid social media links format. Must be valid JSON."
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid social media links data: {str(e)}"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error processing social media links: {str(e)}"
+                )
+        
         # Create a base user data dictionary
         user_data = {
             "username": username,
@@ -51,6 +88,8 @@ async def create_user(
             "user_type": user_type,
             "region": region,
             "date_of_birth": date_of_birth,
+            "bio": bio,
+            "social_media_links": parsed_social_links,
             "profile_picture_initials": profile_picture_initials
         }
         
@@ -96,7 +135,7 @@ async def read_users_me(
     """
     try:
         user_data = await user_service.get_user_profile(current_user.id)
-        return JSONResponse(content=user_data)
+        return user_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
@@ -122,10 +161,23 @@ async def update_user(
     last_name: Optional[str] = Form(None),
     bio: Optional[str] = Form(None),
     date_of_birth: Optional[str] = Form(None),
-    profile_picture: Optional[UploadFile] = File(None)
+    profile_picture: Optional[UploadFile] = File(None),
+    social_media_links: Optional[str] = Form(None)
 ):
     """Update current user's profile"""
     try:
+        # Parse social media links if provided
+        parsed_social_links = None
+        if social_media_links:
+            try:
+                import json
+                parsed_social_links = json.loads(social_media_links)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid social media links format. Must be valid JSON."
+                )
+        
         # Create a dictionary with the form data
         filtered_data = {
             "username": username,
@@ -133,7 +185,8 @@ async def update_user(
             "first_name": first_name,
             "last_name": last_name,
             "bio": bio,
-            "date_of_birth": date_of_birth
+            "date_of_birth": date_of_birth,
+            "social_media_links": parsed_social_links
         }
         
         # Remove None values
@@ -271,10 +324,47 @@ async def admin_update_user(
     last_name: Optional[str] = Form(None),
     bio: Optional[str] = Form(None),
     date_of_birth: Optional[str] = Form(None),
-    profile_picture: Optional[UploadFile] = File(None)
+    profile_picture: Optional[UploadFile] = File(None),
+    social_media_links: Optional[str] = Form(None)
 ):
     """Admin update for any user"""
     try:
+        # Parse social media links if provided
+        parsed_social_links = None
+        if social_media_links:
+            try:
+                import json
+                
+                # Parse the JSON string
+                social_links_data = json.loads(social_media_links)
+                
+                # Convert to SocialMediaLink objects
+                if isinstance(social_links_data, list):
+                    parsed_social_links = []
+                    for link_data in social_links_data:
+                        if isinstance(link_data, dict) and 'label' in link_data and 'icon' in link_data and 'url' in link_data:
+                            parsed_social_links.append(SocialMediaLink(**link_data))
+                        else:
+                            raise ValueError("Each social media link must have label, icon, and url fields")
+                else:
+                    raise ValueError("Social media links must be a list")
+                    
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid social media links format. Must be valid JSON."
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid social media links data: {str(e)}"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Error processing social media links: {str(e)}"
+                )
+        
         # Create a dictionary with the form data
         filtered_data = {
             "username": username,
@@ -282,7 +372,8 @@ async def admin_update_user(
             "first_name": first_name,
             "last_name": last_name,
             "bio": bio,
-            "date_of_birth": date_of_birth
+            "date_of_birth": date_of_birth,
+            "social_media_links": parsed_social_links
         }
         
         # Remove None values

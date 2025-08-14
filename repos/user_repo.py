@@ -27,7 +27,7 @@ class UserRepository:
         if not user_dict:
             return None
             
-        # If user has a profile photo, fetch the file details
+        # If user has a profile photo, fetch the file details; otherwise ensure key exists
         if user_dict.get("profile_photo_id"):
             file_id = user_dict.get("profile_photo_id")
             file_dict = await self.db.files.find_one({"file_id": file_id})
@@ -62,7 +62,7 @@ class UserRepository:
         if not user_dict:
             return None
             
-        # If user has a profile photo, fetch the file details
+        # If user has a profile photo, fetch the file details; otherwise ensure key exists
         if user_dict.get("profile_photo_id"):
             file_id = user_dict.get("profile_photo_id")
             file_dict = await self.db.files.find_one({"file_id": file_id})
@@ -336,6 +336,8 @@ class UserRepository:
                 "profile_file": user.get("profile_file", ""),
                 "user_details": user.get("user_details", {}),
                 "bio": user.get("bio", ""),
+                "date_of_birth": user.get("date_of_birth", ""),
+                "social_media_links": user.get("social_media_links", []),
                 
                 # Connection stats
                 "follower_count": follower_count,
@@ -959,6 +961,7 @@ class UserRepository:
                 "first_name": user.get("first_name", ""),
                 "last_name": user.get("last_name", ""),
                 "bio": user.get("bio", ""),
+                "social_media_links": user.get("social_media_links", []),
                 "follower_count": follower_count,
                 "following_count": following_count,
                 "followers": followers_list,

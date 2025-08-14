@@ -5,6 +5,12 @@ from datetime import datetime
 from bson import ObjectId
 from db.schemas.files_schema import FileInDB
 
+class SocialMediaLink(BaseModel):
+    """Model for social media links"""
+    label: str  # Human-readable platform name (e.g., "LinkedIn", "Instagram")
+    icon: str   # Icon identifier (e.g., "linkedin", "instagram", "github")
+    url: str    # Full profile URL
+
 class UserBase(BaseModel):
     """Base user fields shared across different user models"""
     username: str
@@ -20,7 +26,8 @@ class UserCreate(UserBase):
     region: Optional[str] = None
     profile_picture: Optional[str] = None
     profile_picture_initials: Optional[str] = None
-    date_of_birth: str
+    date_of_birth: Optional[str] = None
+    social_media_links: Optional[List[SocialMediaLink]] = None
     profile_picture_file: Optional[Any] = None  # This field won't be in JSON, but we'll use it to pass the file
     profile_photo_id: Optional[str] = None  # Field to store the MinIO file ID
 
@@ -36,8 +43,12 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     bio: Optional[str] = None  # Allow updating bio
+    date_of_birth: Optional[str] = None  # Allow updating date of birth
     user_details: Optional[Dict[str, Any]] = None
     profile_photo_id: Optional[str] = None  # Field to store the MinIO file ID
+    social_media_links: Optional[List[SocialMediaLink]] = None  # Allow updating social media links
+    updated_at: Optional[datetime] = None  # Allow updating timestamp
+    profile_picture_file: Optional[Dict[str, Any]] = None  # Profile picture file details
 
 class UserResponse(UserBase):
     """Model for returning user information to clients"""
@@ -46,6 +57,8 @@ class UserResponse(UserBase):
     # profile_picture_base64: str
     user_details: Dict[str, Any] = {}
     profile_file: Optional[FileInDB] = None
+    date_of_birth: Optional[str] = None
+    social_media_links: List[SocialMediaLink] = []
     
     likes: List[str] = []
     following: List[str] = []
@@ -86,6 +99,18 @@ class UserResponse(UserBase):
                         "slug": "profile-username-684bc35b",
                         "unique_string": "684bc35b"
                     },
+                    "social_media_links": [
+                        {
+                            "label": "LinkedIn",
+                            "icon": "linkedin",
+                            "url": "https://www.linkedin.com/in/johndoe"
+                        },
+                        {
+                            "label": "GitHub",
+                            "icon": "github",
+                            "url": "https://github.com/johndoe"
+                        }
+                    ],
                     "bookmarks": ["341g1f77bcf86cd799439011"],
                     "likes": ["341g1f77bcf86cd799439011"],
                     "following": ["426h1f77bcf86cd799439011"],

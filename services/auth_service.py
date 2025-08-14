@@ -7,6 +7,7 @@ from utils.security import verify_password
 from repos.user_repo import UserRepository
 from mappers.users_mapper import user_db_to_response
 from models.auth_model import Token, TokenData
+from db.schemas.files_schema import FileInDB
 from config import (
     JWT_SECRET_KEY, 
     JWT_ALGORITHM,
@@ -64,12 +65,17 @@ class AuthService:
         print("user info retrieved: ", user_db)
         print("file info retrieved: ", user_db.profile_file)
 
+        # Ensure profile_file key is always present in token response
+        token_profile_file = (
+            user_db.profile_file if getattr(user_db, 'profile_file', None) else FileInDB()
+        )
+
         return Token(
             access_token=access_token, 
             token_type="bearer", 
             # profile_picture_base64=user_db.profile_picture_base64,
             profile_picture_base64="DEPRECIATED",
-            profile_file=user_db.profile_file
+            profile_file=token_profile_file
 
         )
     

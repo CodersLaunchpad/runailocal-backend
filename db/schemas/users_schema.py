@@ -6,6 +6,12 @@ from utils.time import get_current_utc_time
 from bson import ObjectId
 from db.mongodb import PyObjectId
 
+class SocialMediaLink(BaseModel):
+    """Database representation of a social media link"""
+    label: str
+    icon: str
+    url: str
+
 class UserInDB(BaseModel):
     """Database representation of a user document"""    
     id: PyObjectId = Field(default_factory=lambda: str(ObjectId()), alias="_id")
@@ -20,6 +26,9 @@ class UserInDB(BaseModel):
     profile_photo_id: Optional[str] = None
     profile_photo_file: Optional[str] = None
     profile_file: Optional[FileInDB] = None
+    bio: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    social_media_links: List[SocialMediaLink] = []
 
     # Relationships with other users
     likes: List[PyObjectId] = []
